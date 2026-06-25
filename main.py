@@ -169,7 +169,8 @@ class ScraperBot:
             print(f"  > Skill {i+1}: Recording Level 1...")
             img_skill1 = self.adb.get_screenshot()
             if img_skill1 is not None:
-                skill_data["level_1_text"] = self.parser.extract_text(img_skill1)
+                raw_text = self.parser.extract_text(img_skill1, bbox=(500, 200, 1100, 800))
+                skill_data["level_1_boosts"] = self.parser.parse_skill_boosts(raw_text)
             
             # 2. Open Dropdown
             self.adb.click(952, 270)
@@ -194,7 +195,8 @@ class ScraperBot:
                 print(f"  > Skill {i+1}: Recording Level 2...")
                 img_skill2 = self.adb.get_screenshot()
                 if img_skill2 is not None:
-                    skill_data["level_2_text"] = self.parser.extract_text(img_skill2)
+                    raw_text = self.parser.extract_text(img_skill2, bbox=(500, 200, 1100, 800))
+                    skill_data["level_2_boosts"] = self.parser.parse_skill_boosts(raw_text)
                 
             # 4. Process Level 3
             if max_level == 3:
@@ -205,7 +207,8 @@ class ScraperBot:
                 print(f"  > Skill {i+1}: Recording Level 3...")
                 img_skill3 = self.adb.get_screenshot()
                 if img_skill3 is not None:
-                    skill_data["level_3_text"] = self.parser.extract_text(img_skill3)
+                    raw_text = self.parser.extract_text(img_skill3, bbox=(500, 200, 1100, 800))
+                    skill_data["level_3_boosts"] = self.parser.parse_skill_boosts(raw_text)
             elif max_level == 1:
                 self.adb.click(952, 270)
                 time.sleep(1)
@@ -222,7 +225,8 @@ class ScraperBot:
         img_attr = self.adb.get_screenshot()
         if img_attr is not None:
             cv2.imwrite(f"output/ovr{ovr}_p{player_number}_attributes.png", img_attr)
-            player_data["attributes_raw_text"] = self.parser.extract_text(img_attr)
+            raw_text = self.parser.extract_text(img_attr)
+            player_data["attributes"] = self.parser.parse_attributes(raw_text)
         
         # Step 16: Playstyles Tab
         print("Step 16-18: Extracting Playstyles...")
