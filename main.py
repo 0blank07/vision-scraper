@@ -1,5 +1,7 @@
 import time
 import cv2
+import os
+import json
 from adb_controller import ADBController
 from screen_parser import ScreenParser
 from data_manager import DataManager
@@ -36,6 +38,12 @@ class ScraperBot:
             "tab_traits": (1122, 848),
             "go_back": (54, 45)
         }
+        
+        self.bboxes = {}
+        if os.path.exists("bounding_boxes.json"):
+            import json
+            with open("bounding_boxes.json", "r") as f:
+                self.bboxes = json.load(f)
 
     def check_and_recover_error(self):
         """Checks for error, clicks OK. Returns 'HOME', 'RESULTS', or None."""
@@ -138,12 +146,12 @@ class ScraperBot:
         print("Step 8: Recording shards and capturing card image...")
         img_panel = self.adb.get_screenshot()
         if img_panel is not None:
-            # Crop card image (approximate bounding box for the card artwork in the side panel)
-            # Assuming side panel is on the right, card is usually upper right.
-            card_crop = img_panel[100:550, 1200:1500]
-            cv2.imwrite(f"output/ovr{ovr}_p{player_number}_card.png", card_crop)
-            # Full panel OCR for Shards
-            player_data["shards_text"] = self.parser.extract_text(img_panel, (1200, 50, 1550, 800))
+            if "img_card" in self.bboxes:
+                filepath = f"output/images/cards/ovr{ovr}_p{player_number}.png"
+                self.parser.crop_and_save(img_panel, self.bboxes["img_card"], filepath)
+            
+            if "shard_value" in self.bboxes:
+                player_data["shards"] = self.parser.extract_text(img_panel, bbox=self.bboxes["shard_value"])
         
         # Step 9: Click Player Card in Panel
         print("Step 9: Opening Full Profile...")
@@ -154,8 +162,18 @@ class ScraperBot:
         print("Step 10: Extracting Overview Data...")
         img_overview = self.adb.get_screenshot()
         if img_overview is not None:
-            cv2.imwrite(f"output/ovr{ovr}_p{player_number}_overview.png", img_overview)
-            player_data["overview_raw_text"] = self.parser.extract_text(img_overview)
+            for key in ["full_name", "card_name", "position", "height", "weight", "preferred_foot", "event_name", "work_rate_att", "work_rate_def", "ovr"]:
+                if key in self.bboxes:
+                    player_data[key] = self.parser.extract_text(img_overview, bbox=self.bboxes[key])
+            
+            for key in ["stamina_stars", "skill_moves_stars"]:
+                if key in self.bboxes:
+                    player_data[key] = self.parser.count_stars(img_overview, bbox=self.bboxes[key])
+                    
+            for key in ["img_nation", "img_league"]:
+                if key in self.bboxes:
+                    filepath = f"output/images/{key}/ovr{ovr}_p{player_number}.png"
+                    self.parser.crop_and_save(img_overview, self.bboxes[key], filepath)
         
         # Step 11, 12, 13, 14: Skills
         print("Step 11-14: Processing Skills...")
@@ -165,12 +183,40 @@ class ScraperBot:
             
             skill_data = {"skill_number": i+1}
             
+            def extract_skill_boosts(level_name):
+                print(f"  > Skill {i+1}: Recording Level {level_name}...")
+                img_s = self.adb.get_screenshot()
+                if img_s is None: return
+                
+                if "skill_name" in self.bboxes and "name" not in skill_data:
+                    skill_data["name"] = self.parser.extract_text(img_s, bbox=self.bboxes["skill_name"])
+                    
+                if "img_skill" in self.bboxes and "image_saved" not in skill_data:
+                    filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{i+1}.png"
+                    self.parser.crop_and_save(img_s, self.bboxes["img_skill"], filepath)
+                    skill_data["image_saved"] = True
+                    
+                if "sub_category_skill_boosts" in self.bboxes:
+                    bbox = self.bboxes["sub_category_skill_boosts"]
+                    text1 = self.parser.extract_text(img_s, bbox=bbox)
+                    boosts1 = self.parser.parse_skill_boosts(text1)
+                    
+                    # Scroll down list
+                    self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "600", "800", "300", "500"])
+                    time.sleep(1)
+                    
+                    img_s_scroll = self.adb.get_screenshot()
+                    text2 = self.parser.extract_text(img_s_scroll, bbox=bbox)
+                    boosts2 = self.parser.parse_skill_boosts(text2)
+                    
+                    skill_data[f"level_{level_name}_boosts"] = {**boosts1, **boosts2}
+                    
+                    # Reset scroll
+                    self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "300", "800", "600", "500"])
+                    time.sleep(1)
+
             # 1. Record Level 1 (Default)
-            print(f"  > Skill {i+1}: Recording Level 1...")
-            img_skill1 = self.adb.get_screenshot()
-            if img_skill1 is not None:
-                raw_text = self.parser.extract_text(img_skill1, bbox=(500, 200, 1100, 800))
-                skill_data["level_1_boosts"] = self.parser.parse_skill_boosts(raw_text)
+            extract_skill_boosts("1")
             
             # 2. Open Dropdown
             self.adb.click(952, 270)
@@ -192,11 +238,7 @@ class ScraperBot:
             if max_level >= 2:
                 self.adb.click(941, 411)
                 time.sleep(1.5)
-                print(f"  > Skill {i+1}: Recording Level 2...")
-                img_skill2 = self.adb.get_screenshot()
-                if img_skill2 is not None:
-                    raw_text = self.parser.extract_text(img_skill2, bbox=(500, 200, 1100, 800))
-                    skill_data["level_2_boosts"] = self.parser.parse_skill_boosts(raw_text)
+                extract_skill_boosts("2")
                 
             # 4. Process Level 3
             if max_level == 3:
@@ -204,11 +246,7 @@ class ScraperBot:
                 time.sleep(1.5)
                 self.adb.click(940, 474)
                 time.sleep(1.5)
-                print(f"  > Skill {i+1}: Recording Level 3...")
-                img_skill3 = self.adb.get_screenshot()
-                if img_skill3 is not None:
-                    raw_text = self.parser.extract_text(img_skill3, bbox=(500, 200, 1100, 800))
-                    skill_data["level_3_boosts"] = self.parser.parse_skill_boosts(raw_text)
+                extract_skill_boosts("3")
             elif max_level == 1:
                 self.adb.click(952, 270)
                 time.sleep(1)
@@ -223,9 +261,8 @@ class ScraperBot:
         self.adb.click(*self.coords["tab_attributes"])
         time.sleep(2)
         img_attr = self.adb.get_screenshot()
-        if img_attr is not None:
-            cv2.imwrite(f"output/ovr{ovr}_p{player_number}_attributes.png", img_attr)
-            raw_text = self.parser.extract_text(img_attr)
+        if img_attr is not None and "attributes" in self.bboxes:
+            raw_text = self.parser.extract_text(img_attr, bbox=self.bboxes["attributes"])
             player_data["attributes"] = self.parser.parse_attributes(raw_text)
         
         # Step 16: Playstyles Tab
@@ -233,21 +270,29 @@ class ScraperBot:
         self.adb.click(*self.coords["tab_playstyles"])
         time.sleep(2)
         
+        def process_playstyle(j):
+            img_ps = self.adb.get_screenshot()
+            if img_ps is not None:
+                ps_data = {}
+                for key in ["playstyle_name", "playstyle_level", "playstyle_description"]:
+                    if key in self.bboxes:
+                        ps_data[key] = self.parser.extract_text(img_ps, bbox=self.bboxes[key])
+                if "img_playstyle" in self.bboxes:
+                    filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
+                    self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
+                player_data["playstyles"].append(ps_data)
+
         # Step 17: Playstyle 1
         self.adb.click(*self.coords["playstyle_i_1"])
         time.sleep(1.5)
-        img_ps1 = self.adb.get_screenshot()
-        if img_ps1 is not None:
-            player_data["playstyles"].append(self.parser.extract_text(img_ps1))
+        process_playstyle(0)
         self.adb.click(*self.coords["playstyle_close"])
         time.sleep(1)
         
         # Step 18: Playstyle 2
         self.adb.click(*self.coords["playstyle_i_2"])
         time.sleep(1.5)
-        img_ps2 = self.adb.get_screenshot()
-        if img_ps2 is not None:
-            player_data["playstyles"].append(self.parser.extract_text(img_ps2))
+        process_playstyle(1)
         self.adb.click(*self.coords["playstyle_close"])
         time.sleep(1)
 
@@ -257,8 +302,19 @@ class ScraperBot:
         time.sleep(2)
         img_traits = self.adb.get_screenshot()
         if img_traits is not None:
-            cv2.imwrite(f"output/ovr{ovr}_p{player_number}_traits.png", img_traits)
-            player_data["traits_raw_text"] = self.parser.extract_text(img_traits)
+            player_data["traits"] = []
+            for t in range(1, 9):
+                name_key = f"trait_name_{t}"
+                img_key = f"img_trait_{t}"
+                if name_key in self.bboxes:
+                    trait_name = self.parser.extract_text(img_traits, bbox=self.bboxes[name_key])
+                    # If trait name is found, save it and its icon
+                    if len(trait_name) > 2:
+                        trait_data = {"name": trait_name}
+                        if img_key in self.bboxes:
+                            filepath = f"output/images/traits/ovr{ovr}_p{player_number}_t{t}.png"
+                            self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)
+                        player_data["traits"].append(trait_data)
 
         # Save data
         self.data_mgr.save_player(player_data)

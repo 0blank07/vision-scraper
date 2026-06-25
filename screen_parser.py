@@ -62,8 +62,8 @@ class ScreenParser:
 
     def parse_skill_boosts(self, text):
         """Regex parser to find 'AttributeName +10' patterns in skill popups."""
-        # Matches words followed by a plus sign and numbers
-        pattern = r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*\+\s*(\d{1,3})'
+        # Matches words followed by an optional plus sign and numbers
+        pattern = r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*\+?\s*(\d{1,3})'
         matches = re.findall(pattern, text)
         
         boosts = {}
@@ -83,15 +83,49 @@ class ScreenParser:
         
         return data
 
-    def crop_and_save_card_art(self, img, player_name):
-        """Extract just the player card art without UI elements."""
-        # Clean the name for filename
-        clean_name = "".join([c for c in player_name if c.isalpha() or c.isdigit() or c==' ']).rstrip()
-        clean_name = clean_name.replace(" ", "_").lower()
+    def count_stars(self, img, bbox=None):
+        """Count gold stars in a bounding box using HSV color filtering"""
+        if bbox is not None:
+            x1, y1, x2, y2 = bbox
+            h, w = img.shape[:2]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            cropped = img[y1:y2, x1:x2]
+        else:
+            cropped = img
+            
+        # Convert to HSV color space
+        hsv = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
         
-        # Card art bounding box on the profile page
-        # X: ~30 to 250, Y: ~100 to 500
-        card_img = img[100:500, 30:250]
-        filepath = f"output/images/cards/{clean_name}.png"
-        cv2.imwrite(filepath, card_img)
+        # Define range of gold/yellow color in HSV
+        lower_gold = np.array([15, 100, 100])
+        upper_gold = np.array([45, 255, 255])
+        
+        # Create a mask of the gold pixels
+        mask = cv2.inRange(hsv, lower_gold, upper_gold)
+        
+        # Find continuous shapes (contours) in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter out tiny noise and count actual stars
+        star_count = 0
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area > 10:  # Minimum pixel area to be considered a star
+                star_count += 1
+                
+        return star_count
+
+    def crop_and_save(self, img, bbox, filepath):
+        """Crops the image to the bbox and saves it"""
+        if bbox is None:
+            return None
+        x1, y1, x2, y2 = bbox
+        h, w = img.shape[:2]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        cropped = img[y1:y2, x1:x2]
+        
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        cv2.imwrite(filepath, cropped)
         return filepath
