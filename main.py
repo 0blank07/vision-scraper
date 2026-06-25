@@ -19,7 +19,7 @@ class ScraperBot:
             "min_ovr": (784, 335),
             "max_ovr": (1052, 334),
             "search_submit": (1060, 822),
-            "card_1": (624, 310), # 1st player card
+            "card_1": (637, 310), # 1st player card
             "panel_card": (1354, 357), # Player card in right panel
             "skills": [
                 (1067, 672), (1138, 671), (1210, 672), 
@@ -110,12 +110,9 @@ class ScraperBot:
             self.adb.click(1060, 401) # New click after Max OVR input
             time.sleep(1)
 
-            # Close keyboard
-            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "4"])
-            time.sleep(2)
-
             # Step 6: Click Search Submit
-            print("Step 6: Submitting Search...")
+            print("Step 6: Waiting 2 seconds then submitting Search...")
+            time.sleep(2)
             self.adb.click(*self.coords["search_submit"])
             time.sleep(8)
             
