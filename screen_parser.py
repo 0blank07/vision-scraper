@@ -19,13 +19,17 @@ class ScreenParser:
         os.makedirs("output/images/playstyles", exist_ok=True)
         os.makedirs("output/images/traits", exist_ok=True)
 
-    def extract_text(self, img, bbox, allowlist=None):
+    def extract_text(self, img, bbox=None, allowlist=None):
         """
         Crop the image to the bounding box and perform OCR.
+        If bbox is None, performs OCR on the entire image.
         bbox format: (x_start, y_start, x_end, y_end)
         """
-        x1, y1, x2, y2 = bbox
-        cropped = img[y1:y2, x1:x2]
+        if bbox is not None:
+            x1, y1, x2, y2 = bbox
+            cropped = img[y1:y2, x1:x2]
+        else:
+            cropped = img
         
         # Preprocessing to improve OCR accuracy on game fonts
         gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
