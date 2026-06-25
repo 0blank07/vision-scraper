@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug images
+debug*.png
+temp.png
+screen.png
+home.png
+overview.png
+attributes.png
+playstyles.png
+playstyle_info.png
+traits.png
+skill.png
+search_filter.png
+side_panel.png
+click_target_home.png
+
+# Debug folders
+debug_steps/
+output/
+
+# Logs
+*.log
