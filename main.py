@@ -88,19 +88,27 @@ class ScraperBot:
                 self.adb.click(*self.coords["search_results"])
                 time.sleep(2)
 
-            # Step 4: Click MIN OVR
+            # Step 4: Min OVR
             print("Step 4: Entering MIN OVR...")
             self.adb.click(*self.coords["min_ovr"])
-            time.sleep(2)
+            time.sleep(1)
             self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "text", str(ovr)])
-            time.sleep(2)
+            time.sleep(1)
+            self.adb.click(845, 401) # New click after Min OVR input
+            time.sleep(1)
 
-            # Step 5: Click MAX OVR
+            # Step 5: Max OVR
             print("Step 5: Entering MAX OVR...")
             self.adb.click(*self.coords["max_ovr"])
-            time.sleep(2)
+            time.sleep(1)
+            # Hit backspace 3 times to clear previous input
+            for _ in range(3):
+                self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"])
+                time.sleep(0.2)
             self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "text", str(ovr)])
-            time.sleep(2)
+            time.sleep(1)
+            self.adb.click(1060, 401) # New click after Max OVR input
+            time.sleep(1)
 
             # Close keyboard
             self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "4"])
