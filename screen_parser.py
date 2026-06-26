@@ -57,7 +57,12 @@ class ScreenParser:
         for attr, val in matches:
             # Clean up common easyOCR hallucination on game fonts
             attr = attr.replace('ppribbling', 'Dribbling').replace('Jumpingg', 'Jumping').strip()
-            attributes[attr] = int(val)
+            
+            # Prevent sub-categories from deleting main categories
+            if attr in attributes:
+                attributes[f"{attr}_Stat"] = int(val)
+            else:
+                attributes[attr] = int(val)
         return attributes
 
     def parse_skill_boosts(self, text):
