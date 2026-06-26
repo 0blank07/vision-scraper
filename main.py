@@ -162,7 +162,7 @@ class ScraperBot:
         print("Step 10: Extracting Overview Data...")
         img_overview = self.adb.get_screenshot()
         if img_overview is not None:
-            for key in ["full_name", "card_name", "position", "height", "weight", "preferred_foot", "event_name", "work_rate_att", "work_rate_def", "ovr"]:
+            for key in ["full_name", "card_name", "position", "height", "weight", "preferred_foot", "ovr"]:
                 if key in self.bboxes:
                     player_data[key] = self.parser.extract_text(img_overview, bbox=self.bboxes[key])
             
@@ -195,6 +195,16 @@ class ScraperBot:
                     filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{i+1}.png"
                     self.parser.crop_and_save(img_s, self.bboxes["img_skill"], filepath)
                     skill_data["image_saved"] = True
+                    
+                if "unlock_requirements" in self.bboxes:
+                    req_text = self.parser.extract_text(img_s, bbox=self.bboxes["unlock_requirements"])
+                    if len(req_text.strip()) > 0:
+                        skill_data[f"level_{level_name}_requirements"] = req_text
+                        
+                if "alt_positino" in self.bboxes:
+                    alt_pos = self.parser.extract_text(img_s, bbox=self.bboxes["alt_positino"])
+                    if len(alt_pos.strip()) > 0:
+                        skill_data[f"level_{level_name}_alt_position"] = alt_pos
                     
                 if "sub_category_skill_boosts" in self.bboxes:
                     bbox = self.bboxes["sub_category_skill_boosts"]
@@ -302,6 +312,10 @@ class ScraperBot:
         time.sleep(2)
         img_traits = self.adb.get_screenshot()
         if img_traits is not None:
+            for key in ["event_name", "work_rate_att", "work_rate_def"]:
+                if key in self.bboxes:
+                    player_data[key] = self.parser.extract_text(img_traits, bbox=self.bboxes[key])
+                    
             player_data["traits"] = []
             for t in range(1, 9):
                 name_key = f"trait_name_{t}"
