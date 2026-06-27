@@ -2,6 +2,8 @@ import time
 import cv2
 import os
 import json
+import threading
+import queue
 from adb_controller import ADBController
 from screen_parser import ScreenParser
 from data_manager import DataManager
@@ -41,25 +43,135 @@ class ScraperBot:
         
         self.bboxes = {}
         if os.path.exists("bounding_boxes.json"):
-            import json
             with open("bounding_boxes.json", "r") as f:
                 self.bboxes = json.load(f)
+                
+        # --- ASYNC OCR QUEUE ---
+        # CRITICAL SAFETY: maxsize=2 prevents catastrophic RAM explosion (OOM). 
+        # Each player holds ~150MB of raw images. If the Clicker outpaces the OCR AI,
+        # it will pause and wait for the queue to drain, capping memory at ~300MB.
+        self.task_queue = queue.Queue(maxsize=2)
+        self.worker_thread = threading.Thread(target=self._ocr_worker, daemon=True)
+        self.worker_thread.start()
+        print(">> Asynchronous OCR Background Worker Started.")
+
+    def _ocr_worker(self):
+        while True:
+            task = self.task_queue.get()
+            if task is None: break
+            
+            try:
+                ovr, player_number, images, player_data = task
+                print(f"  [OCR Worker] Processing Player {player_number} (OVR {ovr})...")
+                
+                # Step 8: Side Panel Shards & Card
+                if images.get("panel") is not None:
+                    if "img_card" in self.bboxes:
+                        filepath = f"output/images/cards/ovr{ovr}_p{player_number}.png"
+                        self.parser.crop_and_save(images["panel"], self.bboxes["img_card"], filepath)
+                    if "shard_value" in self.bboxes:
+                        player_data["shards"] = self.parser.extract_text(images["panel"], bbox=self.bboxes["shard_value"])
+
+                # Step 10: Overview Tab
+                if images.get("overview") is not None:
+                    for key in ["full_name", "position", "height", "weight", "preferred_foot", "ovr"]:
+                        if key in self.bboxes:
+                            player_data[key] = self.parser.extract_text(images["overview"], bbox=self.bboxes[key])
+                    for key in ["stamina_stars", "skill_moves_stars"]:
+                        if key in self.bboxes:
+                            player_data[key] = self.parser.count_stars(images["overview"], bbox=self.bboxes[key])
+                    for key in ["img_nation", "img_league"]:
+                        if key in self.bboxes:
+                            filepath = f"output/images/{key}/ovr{ovr}_p{player_number}.png"
+                            self.parser.crop_and_save(images["overview"], self.bboxes[key], filepath)
+
+                # Step 11-14: Skills
+                for s_data in images.get("skills", []):
+                    parsed_skill = {"skill_number": s_data["skill_number"]}
+                    
+                    def process_skill_level(level_name, img_s, img_s_scroll):
+                        if img_s is None: return
+                        if "skill_name" in self.bboxes and "name" not in parsed_skill:
+                            parsed_skill["name"] = self.parser.extract_text(img_s, bbox=self.bboxes["skill_name"])
+                        if "img_skill" in self.bboxes and "image_saved" not in parsed_skill:
+                            filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{parsed_skill['skill_number']}.png"
+                            self.parser.crop_and_save(img_s, self.bboxes["img_skill"], filepath)
+                            parsed_skill["image_saved"] = True
+                        if "unlock_requirements" in self.bboxes:
+                            req_text = self.parser.extract_text(img_s, bbox=self.bboxes["unlock_requirements"])
+                            if req_text.strip(): parsed_skill[f"level_{level_name}_requirements"] = req_text
+                        if "alt_positino" in self.bboxes:
+                            alt_pos = self.parser.extract_text(img_s, bbox=self.bboxes["alt_positino"])
+                            if alt_pos.strip(): parsed_skill[f"level_{level_name}_alt_position"] = alt_pos
+                        if "sub_category_skill_boosts" in self.bboxes:
+                            bbox = self.bboxes["sub_category_skill_boosts"]
+                            boosts1 = self.parser.parse_skill_boosts(self.parser.extract_text(img_s, bbox=bbox))
+                            boosts2 = {}
+                            if img_s_scroll is not None:
+                                boosts2 = self.parser.parse_skill_boosts(self.parser.extract_text(img_s_scroll, bbox=bbox))
+                            parsed_skill[f"level_{level_name}_boosts"] = {**boosts1, **boosts2}
+                            
+                    if "level_1" in s_data: process_skill_level("1", s_data["level_1"], s_data.get("level_1_scroll"))
+                    if "level_2" in s_data: process_skill_level("2", s_data["level_2"], s_data.get("level_2_scroll"))
+                    if "level_3" in s_data: process_skill_level("3", s_data["level_3"], s_data.get("level_3_scroll"))
+                    
+                    player_data["skills"].append(parsed_skill)
+
+                # Step 15: Attributes
+                if images.get("attributes") is not None and "attributes" in self.bboxes:
+                    raw_text = self.parser.extract_text(images["attributes"], bbox=self.bboxes["attributes"])
+                    player_data["attributes"] = self.parser.parse_attributes(raw_text)
+
+                # Step 16-18: Playstyles
+                for j, img_ps in enumerate(images.get("playstyles", [])):
+                    if img_ps is not None:
+                        ps_data = {}
+                        for key in ["playstyle_name", "playstyle_level", "playstyle_description"]:
+                            if key in self.bboxes:
+                                ps_data[key] = self.parser.extract_text(img_ps, bbox=self.bboxes[key])
+                        if "img_playstyle" in self.bboxes:
+                            filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
+                            self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
+                        player_data["playstyles"].append(ps_data)
+
+                # Step 19: Traits
+                if images.get("traits") is not None:
+                    img_traits = images["traits"]
+                    for key in ["event_name", "work_rate_att", "work_rate_def"]:
+                        if key in self.bboxes:
+                            player_data[key] = self.parser.extract_text(img_traits, bbox=self.bboxes[key])
+                    player_data["traits"] = []
+                    for t in range(1, 9):
+                        name_key = f"trait_name_{t}"
+                        img_key = f"img_trait_{t}"
+                        if name_key in self.bboxes:
+                            trait_name = self.parser.extract_text(img_traits, bbox=self.bboxes[name_key])
+                            if len(trait_name) > 2:
+                                trait_data = {"name": trait_name}
+                                if img_key in self.bboxes:
+                                    filepath = f"output/images/traits/ovr{ovr}_p{player_number}_t{t}.png"
+                                    self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)
+                                player_data["traits"].append(trait_data)
+
+                # Save data
+                self.data_mgr.save_player(player_data)
+                print(f"  [OCR Worker] Completed and Saved Player {player_number} (OVR {ovr}).")
+                
+            except Exception as e:
+                print(f"  [OCR Worker] Error processing Player {player_number}: {e}")
+            finally:
+                self.task_queue.task_done()
 
     def check_and_recover_error(self):
-        """Checks for error, clicks OK. Returns 'HOME', 'RESULTS', or None."""
         img = self.adb.get_screenshot()
         if img is None: return None
-        
         text = self.parser.extract_text(img, (200, 200, 1400, 700))
         if "UNKNOWN" in text or "token" in text.lower() or "network" in text.lower() or "Error at line" in text:
             print("\n>> Network error detected! Clicking OK...")
             self.adb.click(*self.coords["error_ok"])
-            time.sleep(5) # Wait to see where game redirects
-            
-            # Check where we ended up
+            time.sleep(5)
             img_after = self.adb.get_screenshot()
             text_after = self.parser.extract_text(img_after, (0, 700, 1600, 900))
-            
             if "STORE" in text_after or "EXCHANGE" in text_after or "QUESTS" in text_after:
                 print(">> Error kicked us to Home Screen.")
                 return "HOME"
@@ -69,56 +181,43 @@ class ScraperBot:
         return None
 
     def navigate_to_search(self, ovr, from_results=False):
-        """Steps 1 to 6: Navigates to search and enters OVR."""
         while True:
             print(f"\n--- Setting up Search for OVR {ovr} ---")
-            
             if not from_results:
-                # Step 1: Click Signings
                 print("Step 1: Clicking SIGNINGS...")
                 self.adb.click(*self.coords["signings"])
                 time.sleep(4)
-                
-                # Step 2: Handle potential error and redirect
-                state = self.check_and_recover_error()
-                if state == "HOME":
+                if self.check_and_recover_error() == "HOME":
                     print("Recovering from Home -> Signings again...")
                     self.adb.click(*self.coords["signings"])
                     time.sleep(4)
-                
-                # Step 3: Click Search Button (Home variant)
                 print("Step 3: Clicking Search Button...")
                 self.adb.click(*self.coords["search_home"])
                 time.sleep(2)
             else:
-                # Step 22: Click Search Button (Results variant)
                 print("Step 22: Clicking Search Filter from Results...")
                 self.adb.click(*self.coords["search_results"])
                 time.sleep(2)
 
-            # Step 4: Min OVR
             print("Step 4: Entering MIN OVR...")
             self.adb.click(*self.coords["min_ovr"])
             time.sleep(1)
-            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "text", str(ovr)])
+            self.adb.input_text(str(ovr))
             time.sleep(1)
-            self.adb.click(845, 401) # New click after Min OVR input
+            self.adb.click(845, 401)
             time.sleep(1)
 
-            # Step 5: Max OVR
             print("Step 5: Entering MAX OVR...")
             self.adb.click(*self.coords["max_ovr"])
             time.sleep(1)
-            # Hit backspace 3 times to clear previous input
             for _ in range(3):
-                self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"])
+                self.adb.keyevent(67)
                 time.sleep(0.2)
-            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "text", str(ovr)])
+            self.adb.input_text(str(ovr))
             time.sleep(1)
-            self.adb.click(1060, 401) # New click after Max OVR input
+            self.adb.click(1060, 401)
             time.sleep(1)
 
-            # Step 6: Click Search Submit
             print("Step 6: Waiting 2 seconds then submitting Search...")
             time.sleep(2)
             self.adb.click(*self.coords["search_submit"])
@@ -133,302 +232,212 @@ class ScraperBot:
             break
 
     def process_player(self, ovr, player_number=1, card_x=624, card_y=310):
-        """Steps 7 to 20: Full deep dive extraction for a single player."""
-        print(f"\n--- Processing Player {player_number} (OVR {ovr}) ---")
+        print(f"\n--- Fast Capturing Player {player_number} (OVR {ovr}) ---")
         player_data = {"OVR": ovr, "player_index": player_number, "skills": [], "playstyles": []}
+        images = {}
         
-        # Step 7: Click Player Card
-        print("Step 7: Clicking player card in grid...")
+        # BULLETPROOF FAILSAFE: Take picture before clicking grid
+        img_before_grid = self.adb.get_screenshot()
+        
         self.adb.click(card_x, card_y)
-        time.sleep(4)
+        time.sleep(1.0)
         
-        # Step 8: Side Panel - Shards & Card Screenshot
-        print("Step 8: Recording shards and capturing card image...")
-        img_panel = self.adb.get_screenshot()
-        if img_panel is not None:
-            if "img_card" in self.bboxes:
-                filepath = f"output/images/cards/ovr{ovr}_p{player_number}.png"
-                self.parser.crop_and_save(img_panel, self.bboxes["img_card"], filepath)
-            
-            if "shard_value" in self.bboxes:
-                player_data["shards"] = self.parser.extract_text(img_panel, bbox=self.bboxes["shard_value"])
+        images["panel"] = self.adb.get_screenshot()
         
-        # Step 9: Click Player Card in Panel
-        print("Step 9: Opening Full Profile...")
+        # Check if the screen actually changed (did the side panel open?)
+        if img_before_grid is not None and images["panel"] is not None:
+            diff = cv2.absdiff(img_before_grid, images["panel"])
+            non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
+            if non_zero < 10000:
+                print(">> Screen didn't change! Clicked an empty grid space. Aborting.")
+                return False
+        
         self.adb.click(*self.coords["panel_card"])
         time.sleep(1.5)
         
-        # Step 10: Overview Tab
-        print("Step 10: Extracting Overview Data...")
-        img_overview = self.adb.get_screenshot()
-        if img_overview is not None:
-            for key in ["full_name", "card_name", "position", "height", "weight", "preferred_foot", "ovr"]:
-                if key in self.bboxes:
-                    player_data[key] = self.parser.extract_text(img_overview, bbox=self.bboxes[key])
+        images["overview"] = self.adb.get_screenshot()
+        # LIVE OCR ONLY for survival:
+        if images["overview"] is not None and "card_name" in self.bboxes:
+            card_name = self.parser.extract_text(images["overview"], bbox=self.bboxes["card_name"])
+            if len(card_name.strip()) < 2:
+                print(">> Failed to detect player profile name! Aborting.")
+                self.adb.click(*self.coords["go_back"])
+                time.sleep(1.0)
+                return False
+            player_data["card_name"] = card_name
             
-            for key in ["stamina_stars", "skill_moves_stars"]:
-                if key in self.bboxes:
-                    player_data[key] = self.parser.count_stars(img_overview, bbox=self.bboxes[key])
-                    
-            for key in ["img_nation", "img_league"]:
-                if key in self.bboxes:
-                    filepath = f"output/images/{key}/ovr{ovr}_p{player_number}.png"
-                    self.parser.crop_and_save(img_overview, self.bboxes[key], filepath)
-        
-        # Step 11, 12, 13, 14: Skills
-        print("Step 11-14: Processing Skills...")
+        player_max_level = None
+        images["skills"] = []
         for i, skill_coord in enumerate(self.coords["skills"]):
             self.adb.click(*skill_coord)
-            time.sleep(0.4)
+            time.sleep(1.0)
             
-            skill_data = {"skill_number": i+1}
+            s_data = {"skill_number": i+1}
             
-            def extract_skill_boosts(level_name):
-                print(f"  > Skill {i+1}: Recording Level {level_name}...")
-                img_s = self.adb.get_screenshot()
-                if img_s is None: return
-                
-                if "skill_name" in self.bboxes and "name" not in skill_data:
-                    skill_data["name"] = self.parser.extract_text(img_s, bbox=self.bboxes["skill_name"])
-                    
-                if "img_skill" in self.bboxes and "image_saved" not in skill_data:
-                    filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{i+1}.png"
-                    self.parser.crop_and_save(img_s, self.bboxes["img_skill"], filepath)
-                    skill_data["image_saved"] = True
-                    
-                if "unlock_requirements" in self.bboxes:
-                    req_text = self.parser.extract_text(img_s, bbox=self.bboxes["unlock_requirements"])
-                    if len(req_text.strip()) > 0:
-                        skill_data[f"level_{level_name}_requirements"] = req_text
-                        
-                if "alt_positino" in self.bboxes:
-                    alt_pos = self.parser.extract_text(img_s, bbox=self.bboxes["alt_positino"])
-                    if len(alt_pos.strip()) > 0:
-                        skill_data[f"level_{level_name}_alt_position"] = alt_pos
-                    
-                if "sub_category_skill_boosts" in self.bboxes:
-                    bbox = self.bboxes["sub_category_skill_boosts"]
-                    text1 = self.parser.extract_text(img_s, bbox=bbox)
-                    boosts1 = self.parser.parse_skill_boosts(text1)
-                    
-                    # Scroll down list
-                    self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "600", "800", "300", "500"])
-                    time.sleep(1)
-                    
-                    img_s_scroll = self.adb.get_screenshot()
-                    text2 = self.parser.extract_text(img_s_scroll, bbox=bbox)
-                    boosts2 = self.parser.parse_skill_boosts(text2)
-                    
-                    skill_data[f"level_{level_name}_boosts"] = {**boosts1, **boosts2}
-                    
-                    # Reset scroll
-                    self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "300", "800", "600", "500"])
-                    time.sleep(1)
-
-            # 1. Record Level 1 (Default)
-            extract_skill_boosts("1")
+            s_data["level_1"] = self.adb.get_screenshot()
+            self.adb.swipe(800, 600, 800, 300, 500)
+            time.sleep(1.0)
+            s_data["level_1_scroll"] = self.adb.get_screenshot()
+            self.adb.swipe(800, 300, 800, 600, 500)
+            time.sleep(1.0)
             
-            # 2. Open Dropdown
-            self.adb.click(952, 270)
-            time.sleep(0.4)
-            
-            # Check levels
-            img_drop = self.adb.get_screenshot()
-            max_level = 1
-            if img_drop is not None:
-                drop_text = self.parser.extract_text(img_drop, (900, 380, 1000, 520)).lower()
-                if "3" in drop_text or "level 3" in drop_text:
-                    max_level = 3
-                elif "2" in drop_text or "level 2" in drop_text:
-                    max_level = 2
-            
-            print(f"    Detected {max_level} levels for this skill.")
-            
-            # 3. Process Level 2
-            if max_level >= 2:
+            if player_max_level is None:
+                self.adb.click(952, 270)
+                time.sleep(1.0)
+                img_drop = self.adb.get_screenshot()
+                max_level = 1
+                if img_drop is not None:
+                    drop_text = self.parser.extract_text(img_drop, (900, 380, 1000, 520)).lower()
+                    if "3" in drop_text or "level 3" in drop_text: max_level = 3
+                    elif "2" in drop_text or "level 2" in drop_text: max_level = 2
+                player_max_level = max_level
+                if player_max_level == 1:
+                    self.adb.click(952, 270)
+                    time.sleep(1.0)
+                    
+            if player_max_level >= 2:
+                if i != 0:
+                    self.adb.click(952, 270)
+                    time.sleep(1.0)
                 self.adb.click(941, 411)
-                time.sleep(0.4)
-                extract_skill_boosts("2")
+                time.sleep(1.0)
+                s_data["level_2"] = self.adb.get_screenshot()
+                self.adb.swipe(800, 600, 800, 300, 500)
+                time.sleep(1.0)
+                s_data["level_2_scroll"] = self.adb.get_screenshot()
+                self.adb.swipe(800, 300, 800, 600, 500)
+                time.sleep(1.0)
                 
-            # 4. Process Level 3
-            if max_level == 3:
+            if player_max_level == 3:
                 self.adb.click(952, 270)
-                time.sleep(0.4)
+                time.sleep(1.0)
                 self.adb.click(940, 474)
-                time.sleep(0.4)
-                extract_skill_boosts("3")
-            elif max_level == 1:
-                self.adb.click(952, 270)
-                time.sleep(0.4)
-
-            # Step 14: Close Skill Window
+                time.sleep(1.0)
+                s_data["level_3"] = self.adb.get_screenshot()
+                self.adb.swipe(800, 600, 800, 300, 500)
+                time.sleep(1.0)
+                s_data["level_3_scroll"] = self.adb.get_screenshot()
+                self.adb.swipe(800, 300, 800, 600, 500)
+                time.sleep(1.0)
+                
             self.adb.click(1104, 271)
-            time.sleep(0.4)
-            player_data["skills"].append(skill_data)
-
-        # Step 15: Attributes Tab
-        print("Step 15: Extracting Attributes...")
+            time.sleep(1.0)
+            images["skills"].append(s_data)
+            
         self.adb.click(*self.coords["tab_attributes"])
-        time.sleep(0.4)
-        img_attr = self.adb.get_screenshot()
-        if img_attr is not None and "attributes" in self.bboxes:
-            raw_text = self.parser.extract_text(img_attr, bbox=self.bboxes["attributes"])
-            player_data["attributes"] = self.parser.parse_attributes(raw_text)
+        time.sleep(1.0)
+        images["attributes"] = self.adb.get_screenshot()
         
-        # Step 16: Playstyles Tab
-        print("Step 16-18: Extracting Playstyles...")
         self.adb.click(*self.coords["tab_playstyles"])
-        time.sleep(0.4)
+        time.sleep(1.0)
+        images["playstyles"] = []
         
-        def process_playstyle(j):
-            img_ps = self.adb.get_screenshot()
-            if img_ps is not None:
-                ps_data = {}
-                for key in ["playstyle_name", "playstyle_level", "playstyle_description"]:
-                    if key in self.bboxes:
-                        ps_data[key] = self.parser.extract_text(img_ps, bbox=self.bboxes[key])
-                if "img_playstyle" in self.bboxes:
-                    filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
-                    self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
-                player_data["playstyles"].append(ps_data)
-
-        # Step 17: Playstyle 1
         self.adb.click(*self.coords["playstyle_i_1"])
-        time.sleep(0.4)
-        process_playstyle(0)
+        time.sleep(1.0)
+        images["playstyles"].append(self.adb.get_screenshot())
         self.adb.click(*self.coords["playstyle_close"])
-        time.sleep(0.4)
+        time.sleep(1.0)
         
-        # Step 18: Playstyle 2
         self.adb.click(*self.coords["playstyle_i_2"])
-        time.sleep(0.4)
-        process_playstyle(1)
+        time.sleep(1.0)
+        images["playstyles"].append(self.adb.get_screenshot())
         self.adb.click(*self.coords["playstyle_close"])
-        time.sleep(0.4)
-
-        # Step 19: Traits Tab
-        print("Step 19: Extracting Traits...")
+        time.sleep(1.0)
+        
         self.adb.click(*self.coords["tab_traits"])
-        time.sleep(0.4)
-        img_traits = self.adb.get_screenshot()
-        if img_traits is not None:
-            for key in ["event_name", "work_rate_att", "work_rate_def"]:
-                if key in self.bboxes:
-                    player_data[key] = self.parser.extract_text(img_traits, bbox=self.bboxes[key])
-                    
-            player_data["traits"] = []
-            for t in range(1, 9):
-                name_key = f"trait_name_{t}"
-                img_key = f"img_trait_{t}"
-                if name_key in self.bboxes:
-                    trait_name = self.parser.extract_text(img_traits, bbox=self.bboxes[name_key])
-                    # If trait name is found, save it and its icon
-                    if len(trait_name) > 2:
-                        trait_data = {"name": trait_name}
-                        if img_key in self.bboxes:
-                            filepath = f"output/images/traits/ovr{ovr}_p{player_number}_t{t}.png"
-                            self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)
-                        player_data["traits"].append(trait_data)
-
-        # Save data
-        self.data_mgr.save_player(player_data)
-
-        # Step 20: Go Back to Results
-        print("Step 20: Going back to Results...")
+        time.sleep(1.0)
+        images["traits"] = self.adb.get_screenshot()
+        
         self.adb.click(*self.coords["go_back"])
         time.sleep(1.5)
+        
+        # OFF-LOAD HEAVY OCR TO BACKGROUND WORKER
+        self.task_queue.put((ovr, player_number, images, player_data))
+        return True
 
     def swipe_list_and_check(self):
-        """Swipes the grid up and returns True if the screen actually moved."""
         img_before = self.adb.get_screenshot()
-        
-        # Slow drag exactly ~250 pixels over 2 seconds to completely kill momentum
-        self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "650", "800", "400", "2000"])
+        # Increased scrolling power and speed (500 pixels in 0.8s) for proper row alignment
+        self.adb.swipe(800, 700, 800, 200, 800)
         time.sleep(2)
         img_after = self.adb.get_screenshot()
         
-        # Compare a patch on the left side where cards sit (X: 100-300, Y: 450-550)
         patch_before = img_before[450:550, 100:300]
         patch_after = img_after[450:550, 100:300]
-        
         diff = cv2.absdiff(patch_before, patch_after)
         non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
-        
-        # If enough pixels changed, the screen actually scrolled
         return non_zero > 1000
 
     def set_search_filter(self, ovr):
-        """Uses the shifted search button to update the OVR filter without going home."""
         print(f"Setting Search Filter for OVR {ovr}...")
-        
-        # 1. Click shifted Search button
         self.adb.click(1441, 121)
         time.sleep(1.5)
-        
-        # 2. Min OVR
         self.adb.click(782, 337)
         time.sleep(0.5)
-        for _ in range(3):
-            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
+        for _ in range(3): self.adb.keyevent(67)
         self.adb.input_text(str(ovr))
-        self.adb.click(948, 428) # Confirm Min OVR
+        self.adb.click(948, 428)
         time.sleep(0.5)
-        
-        # 3. Max OVR
         self.adb.click(1048, 335)
         time.sleep(0.5)
-        for _ in range(3):
-            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
+        for _ in range(3): self.adb.keyevent(67)
         self.adb.input_text(str(ovr))
-        self.adb.click(1048, 398) # Confirm Max OVR
+        self.adb.click(1048, 398)
         time.sleep(0.5)
-        
-        # 4. Click Search
         self.adb.click(1060, 824)
         print("Waiting for results to load...")
         time.sleep(1.5)
 
     def run_full_scrape(self):
-        """Main Loop: OVR 120 down to 110 using the Grid System."""
         print("Starting Full Scrape Task (OVR 120 -> 110)")
-        
-        import os
         os.makedirs("output", exist_ok=True)
-        
-        # The very first time, we navigate from home
         self.navigate_to_search(120, from_results=False)
-        
         player_counter = 1
         
         for ovr in range(120, 109, -1):
-            if ovr < 120:
-                self.set_search_filter(ovr)
-                
-            # --- ROW 1 ---
+            if ovr < 120: self.set_search_filter(ovr)
+            
             row1_coords = [(637, 310), (425, 417), (702, 417), (975, 415)]
+            ovr_complete = False
             for (cx, cy) in row1_coords:
-                self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                if not self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy):
+                    ovr_complete = True
+                    break
                 player_counter += 1
                 
-            # --- SCROLLING ROWS ---
+            if ovr_complete:
+                print(f"Finished scraping all players for OVR {ovr}.")
+                continue
+                
             row2_coords = [(151, 501), (424, 501), (700, 501), (977, 504)]
             while True:
                 scrolled = self.swipe_list_and_check()
                 if not scrolled:
                     print("Reached the bottom of the list!")
                     break
-                
                 print("Scrolled successfully, processing new row...")
                 for (cx, cy) in row2_coords:
-                    self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                    if not self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy):
+                        ovr_complete = True
+                        break
                     player_counter += 1
+                if ovr_complete: break
             
-            # --- LAST ROW (FOOTER) ---
+            if ovr_complete:
+                print(f"Finished scraping all players for OVR {ovr}.")
+                continue
+            
             print("Processing the final row attached to the footer...")
             last_row_coords = [(144, 612), (431, 610), (708, 617), (987, 615)]
             for (cx, cy) in last_row_coords:
-                self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                if not self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy):
+                    break
                 player_counter += 1
+            print(f"Finished scraping all players for OVR {ovr}.")
+            
+        print("Waiting for final background OCR tasks to complete...")
+        self.task_queue.join()
+        print("Scrape Complete!")
 
 if __name__ == "__main__":
     bot = ScraperBot()
