@@ -338,20 +338,96 @@ class ScraperBot:
         self.adb.click(*self.coords["go_back"])
         time.sleep(3)
 
+    def swipe_list_and_check(self):
+        """Swipes the grid up and returns True if the screen actually moved."""
+        img_before = self.adb.get_screenshot()
+        # Swipe UP from bottom to top to scroll down
+        self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "700", "800", "300", "600"])
+        time.sleep(2)
+        img_after = self.adb.get_screenshot()
+        
+        # Compare a patch on the left side where cards sit (X: 100-300, Y: 450-550)
+        patch_before = img_before[450:550, 100:300]
+        patch_after = img_after[450:550, 100:300]
+        
+        diff = cv2.absdiff(patch_before, patch_after)
+        non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
+        
+        # If enough pixels changed, the screen actually scrolled
+        return non_zero > 1000
+
+    def set_search_filter(self, ovr):
+        """Uses the shifted search button to update the OVR filter without going home."""
+        print(f"Setting Search Filter for OVR {ovr}...")
+        
+        # 1. Click shifted Search button
+        self.adb.click(1441, 121)
+        time.sleep(2)
+        
+        # 2. Min OVR
+        self.adb.click(782, 337)
+        time.sleep(1)
+        for _ in range(3):
+            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
+        self.adb.input_text(str(ovr))
+        self.adb.click(948, 428) # Confirm Min OVR
+        time.sleep(1)
+        
+        # 3. Max OVR
+        self.adb.click(1048, 335)
+        time.sleep(1)
+        for _ in range(3):
+            self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
+        self.adb.input_text(str(ovr))
+        self.adb.click(1048, 398) # Confirm Max OVR
+        time.sleep(1)
+        
+        # 4. Click Search
+        self.adb.click(1060, 824)
+        print("Waiting for results to load...")
+        time.sleep(3)
+
     def run_full_scrape(self):
-        """Main Loop: OVR 120 down to 110."""
+        """Main Loop: OVR 120 down to 110 using the Grid System."""
         print("Starting Full Scrape Task (OVR 120 -> 110)")
         
         import os
         os.makedirs("output", exist_ok=True)
         
+        # The very first time, we navigate from home
         self.navigate_to_search(120, from_results=False)
+        
+        player_counter = 1
         
         for ovr in range(120, 109, -1):
             if ovr < 120:
-                self.navigate_to_search(ovr, from_results=True)
+                self.set_search_filter(ovr)
                 
-            self.process_player(ovr, player_number=1, card_x=self.coords["card_1"][0], card_y=self.coords["card_1"][1])
+            # --- ROW 1 ---
+            row1_coords = [(637, 310), (425, 417), (702, 417), (975, 415)]
+            for (cx, cy) in row1_coords:
+                self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                player_counter += 1
+                
+            # --- SCROLLING ROWS ---
+            row2_coords = [(151, 501), (424, 501), (700, 501), (977, 504)]
+            while True:
+                scrolled = self.swipe_list_and_check()
+                if not scrolled:
+                    print("Reached the bottom of the list!")
+                    break
+                
+                print("Scrolled successfully, processing new row...")
+                for (cx, cy) in row2_coords:
+                    self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                    player_counter += 1
+            
+            # --- LAST ROW (FOOTER) ---
+            print("Processing the final row attached to the footer...")
+            last_row_coords = [(144, 612), (431, 610), (708, 617), (987, 615)]
+            for (cx, cy) in last_row_coords:
+                self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                player_counter += 1
 
 if __name__ == "__main__":
     bot = ScraperBot()
