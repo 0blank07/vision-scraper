@@ -156,7 +156,7 @@ class ScraperBot:
         # Step 9: Click Player Card in Panel
         print("Step 9: Opening Full Profile...")
         self.adb.click(*self.coords["panel_card"])
-        time.sleep(4)
+        time.sleep(1.5)
         
         # Step 10: Overview Tab
         print("Step 10: Extracting Overview Data...")
@@ -179,7 +179,7 @@ class ScraperBot:
         print("Step 11-14: Processing Skills...")
         for i, skill_coord in enumerate(self.coords["skills"]):
             self.adb.click(*skill_coord)
-            time.sleep(2)
+            time.sleep(0.4)
             
             skill_data = {"skill_number": i+1}
             
@@ -230,7 +230,7 @@ class ScraperBot:
             
             # 2. Open Dropdown
             self.adb.click(952, 270)
-            time.sleep(1.5)
+            time.sleep(0.4)
             
             # Check levels
             img_drop = self.adb.get_screenshot()
@@ -247,29 +247,29 @@ class ScraperBot:
             # 3. Process Level 2
             if max_level >= 2:
                 self.adb.click(941, 411)
-                time.sleep(1.5)
+                time.sleep(0.4)
                 extract_skill_boosts("2")
                 
             # 4. Process Level 3
             if max_level == 3:
                 self.adb.click(952, 270)
-                time.sleep(1.5)
+                time.sleep(0.4)
                 self.adb.click(940, 474)
-                time.sleep(1.5)
+                time.sleep(0.4)
                 extract_skill_boosts("3")
             elif max_level == 1:
                 self.adb.click(952, 270)
-                time.sleep(1)
+                time.sleep(0.4)
 
             # Step 14: Close Skill Window
             self.adb.click(1104, 271)
-            time.sleep(1.5)
+            time.sleep(0.4)
             player_data["skills"].append(skill_data)
 
         # Step 15: Attributes Tab
         print("Step 15: Extracting Attributes...")
         self.adb.click(*self.coords["tab_attributes"])
-        time.sleep(2)
+        time.sleep(0.4)
         img_attr = self.adb.get_screenshot()
         if img_attr is not None and "attributes" in self.bboxes:
             raw_text = self.parser.extract_text(img_attr, bbox=self.bboxes["attributes"])
@@ -278,7 +278,7 @@ class ScraperBot:
         # Step 16: Playstyles Tab
         print("Step 16-18: Extracting Playstyles...")
         self.adb.click(*self.coords["tab_playstyles"])
-        time.sleep(2)
+        time.sleep(0.4)
         
         def process_playstyle(j):
             img_ps = self.adb.get_screenshot()
@@ -294,22 +294,22 @@ class ScraperBot:
 
         # Step 17: Playstyle 1
         self.adb.click(*self.coords["playstyle_i_1"])
-        time.sleep(1.5)
+        time.sleep(0.4)
         process_playstyle(0)
         self.adb.click(*self.coords["playstyle_close"])
-        time.sleep(1)
+        time.sleep(0.4)
         
         # Step 18: Playstyle 2
         self.adb.click(*self.coords["playstyle_i_2"])
-        time.sleep(1.5)
+        time.sleep(0.4)
         process_playstyle(1)
         self.adb.click(*self.coords["playstyle_close"])
-        time.sleep(1)
+        time.sleep(0.4)
 
         # Step 19: Traits Tab
         print("Step 19: Extracting Traits...")
         self.adb.click(*self.coords["tab_traits"])
-        time.sleep(2)
+        time.sleep(0.4)
         img_traits = self.adb.get_screenshot()
         if img_traits is not None:
             for key in ["event_name", "work_rate_att", "work_rate_def"]:
@@ -336,13 +336,14 @@ class ScraperBot:
         # Step 20: Go Back to Results
         print("Step 20: Going back to Results...")
         self.adb.click(*self.coords["go_back"])
-        time.sleep(3)
+        time.sleep(1.5)
 
     def swipe_list_and_check(self):
         """Swipes the grid up and returns True if the screen actually moved."""
         img_before = self.adb.get_screenshot()
-        # Swipe UP from bottom to top to scroll down
-        self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "700", "800", "300", "600"])
+        
+        # Slow drag exactly ~250 pixels over 2 seconds to completely kill momentum
+        self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "swipe", "800", "650", "800", "400", "2000"])
         time.sleep(2)
         img_after = self.adb.get_screenshot()
         
@@ -362,30 +363,30 @@ class ScraperBot:
         
         # 1. Click shifted Search button
         self.adb.click(1441, 121)
-        time.sleep(2)
+        time.sleep(1.5)
         
         # 2. Min OVR
         self.adb.click(782, 337)
-        time.sleep(1)
+        time.sleep(0.5)
         for _ in range(3):
             self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
         self.adb.input_text(str(ovr))
         self.adb.click(948, 428) # Confirm Min OVR
-        time.sleep(1)
+        time.sleep(0.5)
         
         # 3. Max OVR
         self.adb.click(1048, 335)
-        time.sleep(1)
+        time.sleep(0.5)
         for _ in range(3):
             self.adb._run_cmd(["adb", "-s", self.adb.device_id, "shell", "input", "keyevent", "67"]) # Backspace
         self.adb.input_text(str(ovr))
         self.adb.click(1048, 398) # Confirm Max OVR
-        time.sleep(1)
+        time.sleep(0.5)
         
         # 4. Click Search
         self.adb.click(1060, 824)
         print("Waiting for results to load...")
-        time.sleep(3)
+        time.sleep(1.5)
 
     def run_full_scrape(self):
         """Main Loop: OVR 120 down to 110 using the Grid System."""
