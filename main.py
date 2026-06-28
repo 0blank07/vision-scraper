@@ -50,6 +50,10 @@ class ScraperBot:
         # CRITICAL SAFETY: maxsize=2 prevents catastrophic RAM explosion (OOM). 
         # Each player holds ~150MB of raw images. If the Clicker outpaces the OCR AI,
         # it will pause and wait for the queue to drain, capping memory at ~300MB.
+        # Threading Event to pause OCR during critical UI animations (like scrolling)
+        self.animation_lock = threading.Event()
+        self.animation_lock.set() # Allow worker to run by default
+        
         self.task_queue = queue.Queue(maxsize=2)
         self.worker_thread = threading.Thread(target=self._ocr_worker, daemon=True)
         self.worker_thread.start()
@@ -57,6 +61,9 @@ class ScraperBot:
 
     def _ocr_worker(self):
         while True:
+            # Industry Standard: Yield CPU if the main thread is performing a critical UI animation
+            self.animation_lock.wait() 
+            
             task = self.task_queue.get()
             if task is None: break
             
@@ -373,7 +380,8 @@ class ScraperBot:
         return True
 
     def swipe_list_and_check(self):
-        print(">> Executing scroll...")
+        print(">> Pausing background AI for 2 seconds to guarantee a perfectly smooth scroll...")
+        self.animation_lock.clear() # Pauses the OCR worker instantly
         
         for attempt in range(2):
             img_before = self.adb.get_screenshot()
@@ -391,10 +399,12 @@ class ScraperBot:
             non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
             
             if non_zero > 1000:
+                self.animation_lock.set() # Unpause the worker!
                 return True
                 
             print(f">> Swipe failed to move screen (Diff: {non_zero}). Retrying to ensure it wasn't dropped by lag...")
             
+        self.animation_lock.set() # Unpause if we fail
         return False
 
     def set_search_filter(self, ovr):
