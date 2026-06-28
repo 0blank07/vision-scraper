@@ -263,6 +263,23 @@ class ScraperBot:
         time.sleep(1.5)
         
         images["overview"] = self.adb.get_screenshot()
+        
+        # BULLETPROOF FAILSAFE 2: Did the side panel actually change?
+        # If we click an empty grid space, the side panel stays open on the previous player!
+        if hasattr(self, 'last_overview') and self.last_overview is not None and images["overview"] is not None:
+            # Crop to the right side panel [y_start:y_end, x_start:x_end] to avoid grid animations
+            patch_old = self.last_overview[200:800, 1100:1600]
+            patch_new = images["overview"][200:800, 1100:1600]
+            diff_panel = cv2.absdiff(patch_old, patch_new)
+            non_zero_panel = cv2.countNonZero(cv2.cvtColor(diff_panel, cv2.COLOR_BGR2GRAY))
+            
+            if non_zero_panel < 5000:
+                print(f">> Overview panel didn't change (Diff: {non_zero_panel}). Clicked empty space or same player. Aborting row.")
+                return False
+                
+        if images["overview"] is not None:
+            self.last_overview = images["overview"].copy()
+            
         # Ensure the summary page is actually loaded
         if images["overview"] is not None and "card_name" in self.bboxes:
             card_name = self.parser.extract_text(images["overview"], bbox=self.bboxes["card_name"])
@@ -409,7 +426,7 @@ class ScraperBot:
 
     def set_search_filter(self, ovr):
         print(f"Setting Search Filter for OVR {ovr}...")
-        self.adb.click(1441, 121)
+        self.adb.click(1425, 125)
         time.sleep(1.5)
         self.adb.click(782, 337)
         time.sleep(0.5)
