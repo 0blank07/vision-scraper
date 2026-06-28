@@ -290,6 +290,19 @@ class ScraperBot:
         time.sleep(2.5) 
         images["overview"] = self.adb.get_screenshot()
                 
+        # VISUAL DUPLICATE DETECTION: Check if we just opened the exact same player again!
+        if hasattr(self, 'last_overview') and self.last_overview is not None and images["overview"] is not None:
+            patch_old_final = self.last_overview[200:800, 1100:1600]
+            patch_new_final = images["overview"][200:800, 1100:1600]
+            diff_final = cv2.absdiff(patch_old_final, patch_new_final)
+            non_zero_final = cv2.countNonZero(cv2.cvtColor(diff_final, cv2.COLOR_BGR2GRAY))
+            
+            if non_zero_final < 5000:
+                print(f">> VISUAL DUPLICATE DETECTED (Diff: {non_zero_final}). Opened the exact same player again! Scroll lagged.")
+                self.adb.click(*self.coords["go_back"])
+                time.sleep(1.0)
+                return "DUPLICATE"
+                
         if images["overview"] is not None:
             self.last_overview = images["overview"].copy()
             
@@ -439,23 +452,32 @@ class ScraperBot:
 
     def set_search_filter(self, ovr):
         print(f"Setting Search Filter for OVR {ovr}...")
-        self.adb.click(1425, 125)
+        self.adb.click(1425, 125) # Open Search Filter
+        time.sleep(3.0) # Wait for popup animation to fully finish
+        
+        self.adb.click(782, 337) # Click Min OVR box
+        time.sleep(2.0) # Wait for virtual keyboard to pop up and focus
+        for _ in range(3): self.adb.keyevent(67)
+        time.sleep(0.5)
+        self.adb.input_text(str(ovr))
+        time.sleep(0.5)
+        
+        self.adb.click(948, 428) # Click background to close keyboard
         time.sleep(1.5)
-        self.adb.click(782, 337)
-        time.sleep(0.5)
+        
+        self.adb.click(1048, 335) # Click Max OVR box
+        time.sleep(2.0) # Wait for virtual keyboard to pop up and focus
         for _ in range(3): self.adb.keyevent(67)
+        time.sleep(0.5)
         self.adb.input_text(str(ovr))
-        self.adb.click(948, 428)
         time.sleep(0.5)
-        self.adb.click(1048, 335)
-        time.sleep(0.5)
-        for _ in range(3): self.adb.keyevent(67)
-        self.adb.input_text(str(ovr))
-        self.adb.click(1048, 398)
-        time.sleep(0.5)
-        self.adb.click(1060, 824)
+        
+        self.adb.click(1048, 398) # Click background to close keyboard
+        time.sleep(1.5)
+        
+        self.adb.click(1060, 824) # Click Search button
         print("Waiting for results to load...")
-        time.sleep(1.5)
+        time.sleep(4.0) # Wait for new grid to load
 
     def run_full_scrape(self):
         print("Starting Full Scrape Task (OVR 120 -> 110)")
