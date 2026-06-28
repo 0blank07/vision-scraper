@@ -378,8 +378,8 @@ class ScraperBot:
         for attempt in range(2):
             img_before = self.adb.get_screenshot()
             
-            # Using the exact smooth scroll coordinates (no fling momentum)
-            self.adb.swipe(800, 650, 800, 400, 2000)
+            # Using the exact smooth scroll coordinates (increased duration by 10% to 2200ms)
+            self.adb.swipe(800, 650, 800, 400, 2200)
             time.sleep(3.5)
             
             img_after = self.adb.get_screenshot()
