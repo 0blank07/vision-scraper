@@ -258,24 +258,37 @@ class ScraperBot:
             if non_zero < 10000:
                 print(f">> Screen didn't change enough (Diff: {non_zero}). Clicked an empty grid space. Aborting.")
                 return False
+                
+        # Step 3: Ensure we are on Overview tab
+        self.adb.click(*self.coords["panel_card"]) # Click to maximize side panel
         
-        self.adb.click(*self.coords["panel_card"])
-        time.sleep(1.5)
-        
-        images["overview"] = self.adb.get_screenshot()
-        
-        # BULLETPROOF FAILSAFE 2: Did the side panel actually change?
-        # If we click an empty grid space, the side panel stays open on the previous player!
-        if hasattr(self, 'last_overview') and self.last_overview is not None and images["overview"] is not None:
-            # Crop to the right side panel [y_start:y_end, x_start:x_end] to avoid grid animations
+        # DYNAMIC WAIT: Wait for the panel to actually update (detect the slide animation)
+        # If we click empty space, it will never update.
+        changed = True
+        if hasattr(self, 'last_overview') and self.last_overview is not None:
+            changed = False
             patch_old = self.last_overview[200:800, 1100:1600]
-            patch_new = images["overview"][200:800, 1100:1600]
-            diff_panel = cv2.absdiff(patch_old, patch_new)
-            non_zero_panel = cv2.countNonZero(cv2.cvtColor(diff_panel, cv2.COLOR_BGR2GRAY))
             
-            if non_zero_panel < 5000:
-                print(f">> Overview panel didn't change (Diff: {non_zero_panel}). Clicked empty space or same player. Aborting row.")
+            for _ in range(8): # Poll for up to 4 seconds
+                time.sleep(0.5)
+                tmp_img = self.adb.get_screenshot()
+                patch_new = tmp_img[200:800, 1100:1600]
+                diff_panel = cv2.absdiff(patch_old, patch_new)
+                non_zero_panel = cv2.countNonZero(cv2.cvtColor(diff_panel, cv2.COLOR_BGR2GRAY))
+                
+                if non_zero_panel > 5000:
+                    changed = True
+                    break
+                    
+            if not changed:
+                print(f">> Overview panel didn't change after 4s (Diff: {non_zero_panel}). Clicked empty space. Aborting.")
                 return False
+                
+            print(">> Panel update detected! Waiting for slide animation to finish...")
+        
+        # Wait for the slide animation to completely settle
+        time.sleep(2.5) 
+        images["overview"] = self.adb.get_screenshot()
                 
         if images["overview"] is not None:
             self.last_overview = images["overview"].copy()
