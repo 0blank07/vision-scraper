@@ -43,9 +43,37 @@ class ScreenParser:
         else:
             cropped = img
         
+        # ATTEMPT 1: Standard CLAHE Preprocessing
         processed = self.preprocess_image(cropped)
         results = self.reader.readtext(processed, allowlist=allowlist, detail=0)
-        return " ".join(results).strip()
+        text = " ".join(results).strip()
+        
+        # ATTEMPT 2: Advanced Adaptive Binarization for difficult backgrounds (e.g. flags)
+        if len(text) < 3:
+            print(">> OCR low confidence. Switching to Advanced Vision Fallback for background isolation...")
+            
+            # Convert to Grayscale
+            gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+            
+            # Resize by 3x to give OCR more pixels to separate text from background
+            enlarged = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            
+            # Apply Gaussian Blur to smooth out flag noise while keeping text edges intact
+            blurred = cv2.GaussianBlur(enlarged, (5, 5), 0)
+            
+            # Adaptive Thresholding calculates threshold locally, perfect for multi-colored flags
+            binary = cv2.adaptiveThreshold(
+                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY_INV, 15, 5
+            )
+            
+            # Invert so text is black on white (EasyOCR performs better this way)
+            inverted = cv2.bitwise_not(binary)
+            
+            results_fallback = self.reader.readtext(inverted, allowlist=allowlist, detail=0)
+            text = " ".join(results_fallback).strip()
+            
+        return text
 
     def parse_attributes(self, text):
         """Regex parser to find 'AttributeName 123' patterns in the text."""

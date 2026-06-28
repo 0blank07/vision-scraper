@@ -244,27 +244,44 @@ class ScraperBot:
         
         images["panel"] = self.adb.get_screenshot()
         
-        # Check if the screen actually changed (did the side panel open?)
+        # Check if the screen actually changed (did the side panel open or update?)
         if img_before_grid is not None and images["panel"] is not None:
             diff = cv2.absdiff(img_before_grid, images["panel"])
             non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
             if non_zero < 10000:
-                print(">> Screen didn't change! Clicked an empty grid space. Aborting.")
+                print(f">> Screen didn't change enough (Diff: {non_zero}). Clicked an empty grid space. Aborting.")
                 return False
         
         self.adb.click(*self.coords["panel_card"])
         time.sleep(1.5)
         
         images["overview"] = self.adb.get_screenshot()
-        # LIVE OCR ONLY for survival:
+        # Ensure the summary page is actually loaded
         if images["overview"] is not None and "card_name" in self.bboxes:
             card_name = self.parser.extract_text(images["overview"], bbox=self.bboxes["card_name"])
             if len(card_name.strip()) < 2:
-                print(">> Failed to detect player profile name! Aborting.")
+                print(">> Warning: Name missing. Summary page might be slow to load. Retrying...")
+                time.sleep(1.0)
+                images["overview"] = self.adb.get_screenshot()
+                card_name = self.parser.extract_text(images["overview"], bbox=self.bboxes["card_name"])
+                if len(card_name.strip()) < 2:
+                    print(">> Still couldn't read player name (OCR failure). Proceeding anyway...")
+                    card_name = "Unknown"
+                    
+            # DUPLICATE DETECTION: If we hit the exact same player again, the scroll lagged!
+            if hasattr(self, 'recent_names') and card_name != "Unknown" and card_name in self.recent_names:
+                print(f">> DUPLICATE DETECTED ({card_name})! The grid scroll must have failed/lagged.")
                 self.adb.click(*self.coords["go_back"])
                 time.sleep(1.0)
-                return False
+                return "DUPLICATE"
+                
             player_data["card_name"] = card_name
+            
+            # Store in recent names for duplicate detection (keep last 8)
+            if not hasattr(self, 'recent_names'): self.recent_names = []
+            if card_name != "Unknown":
+                self.recent_names.append(card_name)
+                if len(self.recent_names) > 8: self.recent_names.pop(0)
             
         player_max_level = None
         images["skills"] = []
@@ -356,17 +373,29 @@ class ScraperBot:
         return True
 
     def swipe_list_and_check(self):
-        img_before = self.adb.get_screenshot()
-        # Increased scrolling power and speed (500 pixels in 0.8s) for proper row alignment
-        self.adb.swipe(800, 700, 800, 200, 800)
-        time.sleep(2)
-        img_after = self.adb.get_screenshot()
+        print(">> Executing scroll...")
         
-        patch_before = img_before[450:550, 100:300]
-        patch_after = img_after[450:550, 100:300]
-        diff = cv2.absdiff(patch_before, patch_after)
-        non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
-        return non_zero > 1000
+        for attempt in range(2):
+            img_before = self.adb.get_screenshot()
+            
+            # Using the exact smooth scroll coordinates (no fling momentum)
+            self.adb.swipe(800, 650, 800, 400, 2000)
+            time.sleep(3.5)
+            
+            img_after = self.adb.get_screenshot()
+            
+            patch_before = img_before[450:550, 100:300]
+            patch_after = img_after[450:550, 100:300]
+            
+            diff = cv2.absdiff(patch_before, patch_after)
+            non_zero = cv2.countNonZero(cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY))
+            
+            if non_zero > 1000:
+                return True
+                
+            print(f">> Swipe failed to move screen (Diff: {non_zero}). Retrying to ensure it wasn't dropped by lag...")
+            
+        return False
 
     def set_search_filter(self, ovr):
         print(f"Setting Search Filter for OVR {ovr}...")
@@ -410,17 +439,45 @@ class ScraperBot:
                 continue
                 
             row2_coords = [(151, 501), (424, 501), (700, 501), (977, 504)]
+            consecutive_scroll_fails = 0
+            
             while True:
                 scrolled = self.swipe_list_and_check()
                 if not scrolled:
                     print("Reached the bottom of the list!")
                     break
+                
                 print("Scrolled successfully, processing new row...")
-                for (cx, cy) in row2_coords:
-                    if not self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy):
+                row_failed = False
+                for i, (cx, cy) in enumerate(row2_coords):
+                    result = self.process_player(ovr, player_number=player_counter, card_x=cx, card_y=cy)
+                    
+                    if result == "DUPLICATE":
+                        print(">> Duplicate caught! Triggering corrective scroll...")
+                        row_failed = True
+                        break
+                        
+                    if not result:
+                        if i == 0:
+                            print(">> Missed the first card! The emulator probably lagged during the scroll. Retrying swipe...")
+                            row_failed = True
+                            break
+                        else:
+                            # If we miss the 2nd, 3rd, or 4th card, it's just a half-empty row. Safely end the OVR.
+                            ovr_complete = True
+                            break
+                    
+                    player_counter += 1
+                    consecutive_scroll_fails = 0 # Reset counter on successful click
+                    
+                if row_failed:
+                    consecutive_scroll_fails += 1
+                    if consecutive_scroll_fails >= 2:
+                        print(">> Failed to find a card twice. We must be at the end of the OVR.")
                         ovr_complete = True
                         break
-                    player_counter += 1
+                    continue # Loop back and swipe again!
+                    
                 if ovr_complete: break
             
             if ovr_complete:
