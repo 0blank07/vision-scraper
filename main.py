@@ -4,6 +4,9 @@ import os
 import json
 import threading
 import queue
+from google import genai
+from google.genai import types
+import PIL.Image
 from adb_controller import ADBController
 from screen_parser import ScreenParser
 from data_manager import DataManager
@@ -83,7 +86,8 @@ class ScraperBot:
                 if images.get("overview") is not None:
                     for key in ["full_name", "position", "height", "weight", "preferred_foot", "ovr"]:
                         if key in self.bboxes:
-                            player_data[key] = self.parser.extract_text(images["overview"], bbox=self.bboxes[key])
+                            allowlist = "012345LRlr" if key == "preferred_foot" else None
+                            player_data[key] = self.parser.extract_text(images["overview"], bbox=self.bboxes[key], allowlist=allowlist)
                     for key in ["stamina_stars", "skill_moves_stars"]:
                         if key in self.bboxes:
                             player_data[key] = self.parser.count_stars(images["overview"], bbox=self.bboxes[key])
@@ -98,7 +102,7 @@ class ScraperBot:
                     
                     def process_skill_level(level_name, img_s, img_s_scroll):
                         if img_s is None: return
-                        if "skill_name" in self.bboxes and "name" not in parsed_skill:
+                        if "skill_name" in self.bboxes:
                             parsed_skill["name"] = self.parser.extract_text(img_s, bbox=self.bboxes["skill_name"])
                         if "img_skill" in self.bboxes and "image_saved" not in parsed_skill:
                             filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{parsed_skill['skill_number']}.png"
@@ -118,6 +122,12 @@ class ScraperBot:
                                 boosts2 = self.parser.parse_skill_boosts(self.parser.extract_text(img_s_scroll, bbox=bbox))
                             parsed_skill[f"level_{level_name}_boosts"] = {**boosts1, **boosts2}
                             
+                            # Double-Confirmation: Reverse engineer name if empty or fallback
+                            if "name" not in parsed_skill or len(parsed_skill["name"]) < 3:
+                                reversed_name = self.parser.reverse_engineer_skill(parsed_skill[f"level_{level_name}_boosts"])
+                                if reversed_name:
+                                    parsed_skill["name"] = reversed_name
+                            
                     if "level_1" in s_data: process_skill_level("1", s_data["level_1"], s_data.get("level_1_scroll"))
                     if "level_2" in s_data: process_skill_level("2", s_data["level_2"], s_data.get("level_2_scroll"))
                     if "level_3" in s_data: process_skill_level("3", s_data["level_3"], s_data.get("level_3_scroll"))
@@ -132,14 +142,28 @@ class ScraperBot:
                 # Step 16-18: Playstyles
                 for j, img_ps in enumerate(images.get("playstyles", [])):
                     if img_ps is not None:
-                        ps_data = {}
-                        for key in ["playstyle_name", "playstyle_level", "playstyle_description"]:
-                            if key in self.bboxes:
-                                ps_data[key] = self.parser.extract_text(img_ps, bbox=self.bboxes[key])
-                        if "img_playstyle" in self.bboxes:
-                            filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
-                            self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
-                        player_data["playstyles"].append(ps_data)
+                        is_empty = False
+                        if "playstyle_name" in self.bboxes:
+                            px1, py1, px2, py2 = self.bboxes["playstyle_name"]
+                            if img_ps[py1:py2, px1:px2].std() < 5.0:
+                                is_empty = True
+                                
+                        if not is_empty:
+                            ps_data = {}
+                            raw_name = ""
+                            raw_level = ""
+                            if "playstyle_name" in self.bboxes:
+                                raw_name = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_name"])
+                            if "playstyle_level" in self.bboxes:
+                                raw_level = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_level"])
+                                
+                            # Double-Confirmation: Match name to DB and pull description instantly
+                            ps_data = self.parser.reverse_engineer_playstyle(raw_name, raw_level)
+                            
+                            if "img_playstyle" in self.bboxes:
+                                filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
+                                self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
+                            player_data["playstyles"].append(ps_data)
 
                 # Step 19: Traits
                 if images.get("traits") is not None:
@@ -160,10 +184,74 @@ class ScraperBot:
                                     self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)
                                 player_data["traits"].append(trait_data)
 
+                # --- GEMINI API FALLBACK FOR TRICKY TEXT ---
+                if os.environ.get("GEMINI_API_KEY"):
+                    gemini_images = []
+                    gemini_prompt = "You are a highly precise data extraction assistant. I will provide you with several cropped images from a video game UI. Please extract the exact text from each image in the order provided, and output JSON. Output EXACTLY what you see. If an image is completely blank or blurry, output an empty string. Do not guess or make up words.\n\n"
+                    
+                    # 1. Preferred foot
+                    if images.get("overview") is not None and "preferred_foot" in self.bboxes:
+                        x1, y1, x2, y2 = self.bboxes["preferred_foot"]
+                        pref_foot_cv = images["overview"][y1:y2, x1:x2]
+                        gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(pref_foot_cv, cv2.COLOR_BGR2RGB)))
+                        gemini_prompt += f"Image {len(gemini_images)}: Preferred Foot (Should be 2 digits like '54' representing weak/strong foot. If empty, output empty string)\n"
+                        
+                    # 2. Skill Names
+                    for i, s_data in enumerate(images.get("skills", [])):
+                        if "level_1" in s_data and s_data["level_1"] is not None and "skill_name" in self.bboxes:
+                            x1, y1, x2, y2 = self.bboxes["skill_name"]
+                            skill_cv = s_data["level_1"][y1:y2, x1:x2]
+                            gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(skill_cv, cv2.COLOR_BGR2RGB)))
+                            gemini_prompt += f"Image {len(gemini_images)}: Skill Name {i+1} (Usually ALL CAPS. Can be empty if locked.)\n"
+                            
+                    # 3. Playstyle Names
+                    for j, img_ps in enumerate(images.get("playstyles", [])):
+                        if img_ps is not None and "playstyle_name" in self.bboxes:
+                            is_empty = False
+                            if "playstyle_name" in self.bboxes:
+                                px1, py1, px2, py2 = self.bboxes["playstyle_name"]
+                                if img_ps[py1:py2, px1:px2].std() < 5.0:
+                                    is_empty = True
+                            
+                            if not is_empty:
+                                x1, y1, x2, y2 = self.bboxes["playstyle_name"]
+                                ps_cv = img_ps[y1:y2, x1:x2]
+                                gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(ps_cv, cv2.COLOR_BGR2RGB)))
+                                gemini_prompt += f"Image {len(gemini_images)}: Playstyle Name {j+1} (Usually ALL CAPS. Output EXACTLY what you see, or empty string.)\n"
+                            
+                    if len(gemini_images) > 0:
+                        gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [\"FINESSE SHOT\", ...]\n}"
+                        try:
+                            print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}...")
+                            client = genai.Client()
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=[gemini_prompt] + gemini_images,
+                                config=types.GenerateContentConfig(response_mime_type="application/json")
+                            )
+                            gemini_data = json.loads(response.text)
+                            
+                            # Merge back into player_data
+                            if "preferred_foot" in gemini_data:
+                                player_data["preferred_foot"] = gemini_data["preferred_foot"]
+                                
+                            for i, skill_name in enumerate(gemini_data.get("skills", [])):
+                                if i < len(player_data["skills"]) and skill_name:
+                                    player_data["skills"][i]["name"] = skill_name
+                                    
+                            for j, ps_name in enumerate(gemini_data.get("playstyles", [])):
+                                if j < len(player_data["playstyles"]) and ps_name:
+                                    old_ps_data = player_data["playstyles"][j]
+                                    new_ps_data = self.parser.reverse_engineer_playstyle(ps_name, old_ps_data.get("playstyle_level", ""))
+                                    player_data["playstyles"][j] = new_ps_data
+                                    
+                            print(f"  [Gemini API] Successfully extracted data for Player {player_number}!")
+                        except Exception as e:
+                            print(f"  [Gemini API] Failed: {e}")
+
                 # Save data
                 self.data_mgr.save_player(player_data)
                 print(f"  [OCR Worker] Completed and Saved Player {player_number} (OVR {ovr}).")
-                
             except Exception as e:
                 print(f"  [OCR Worker] Error processing Player {player_number}: {e}")
             finally:

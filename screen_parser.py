@@ -3,6 +3,8 @@ import numpy as np
 import easyocr
 import os
 import re
+import difflib
+from dictionaries import SKILL_SIGNATURES, PLAYSTYLES
 
 class ScreenParser:
     def __init__(self):
@@ -19,6 +21,17 @@ class ScreenParser:
         os.makedirs("output/images/skills", exist_ok=True)
         os.makedirs("output/images/playstyles", exist_ok=True)
         os.makedirs("output/images/traits", exist_ok=True)
+        
+        # Production Ground-Truth Dictionary for Fuzzy Matching
+        self.VALID_ATTRIBUTES = [
+            "Pace", "Shooting", "Passing", "Dribbling", "Defending", "Physical",
+            "Acceleration", "Sprint Speed", "Positioning", "Finishing", "Shot Power", 
+            "Long Shot", "Volley", "Penalties", "Vision", "Crossing", "Free Kick", 
+            "Short Passing", "Long Passing", "Curve", "Agility", "Balance", 
+            "Reactions", "Ball Control", "Interceptions", "Heading", "Awareness", 
+            "Stand Tackle", "Standing Tackle", "Sliding Tackle", "Jumping", "Strength", "Aggression", "Marking",
+            "Diving", "Positioning", "Handling", "Reflexes", "Kicking"
+        ]
 
     def preprocess_image(self, img):
         """Applies grayscale and contrast enhancement to fix game UI OCR issues."""
@@ -47,31 +60,6 @@ class ScreenParser:
         processed = self.preprocess_image(cropped)
         results = self.reader.readtext(processed, allowlist=allowlist, detail=0)
         text = " ".join(results).strip()
-        
-        # ATTEMPT 2: Advanced Adaptive Binarization for difficult backgrounds (e.g. flags)
-        if len(text) < 3:
-            print(">> OCR low confidence. Switching to Advanced Vision Fallback for background isolation...")
-            
-            # Convert to Grayscale
-            gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-            
-            # Resize by 3x to give OCR more pixels to separate text from background
-            enlarged = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-            
-            # Apply Gaussian Blur to smooth out flag noise while keeping text edges intact
-            blurred = cv2.GaussianBlur(enlarged, (5, 5), 0)
-            
-            # Adaptive Thresholding calculates threshold locally, perfect for multi-colored flags
-            binary = cv2.adaptiveThreshold(
-                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                cv2.THRESH_BINARY_INV, 15, 5
-            )
-            
-            # Invert so text is black on white (EasyOCR performs better this way)
-            inverted = cv2.bitwise_not(binary)
-            
-            results_fallback = self.reader.readtext(inverted, allowlist=allowlist, detail=0)
-            text = " ".join(results_fallback).strip()
             
         return text
 
@@ -95,15 +83,66 @@ class ScreenParser:
 
     def parse_skill_boosts(self, text):
         """Regex parser to find 'AttributeName +10' patterns in skill popups."""
+        import difflib
+        
         # Matches words followed by an optional plus sign and numbers
-        pattern = r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s*\+?\s*(\d{1,3})'
+        pattern = r'([a-zA-Z]+(?:\s[a-zA-Z]+)*)\s*\+?\s*(\d{1,3})'
         matches = re.findall(pattern, text)
         
         boosts = {}
         for attr, val in matches:
-            attr = attr.replace('ppribbling', 'Dribbling').strip()
-            boosts[attr] = f"+{val}"
+            attr = attr.strip()
+            
+            # Known OCR cutoff overrides
+            if attr.lower() == "shot": attr = "Long Shot" # Usually Long Shot gets cut off as Shot
+            elif attr.lower() == "tackle": attr = "Standing Tackle"
+            elif attr.lower() == "passing": attr = "Short Passing"
+            
+            # Fuzzy match to production dictionary
+            closest = difflib.get_close_matches(attr, self.VALID_ATTRIBUTES, n=1, cutoff=0.6)
+            final_attr = closest[0] if closest else attr.title()
+            
+            boosts[final_attr] = f"+{val}"
         return boosts
+
+    def reverse_engineer_skill(self, boosts_dict):
+        """Identifies the skill name perfectly by matching the combination of boosted stats."""
+        # Filter out random junk like 'Ovr' or 'Unlocks After Wingback...'
+        clean_stats = []
+        for k in boosts_dict.keys():
+            if k in self.VALID_ATTRIBUTES:
+                clean_stats.append(k)
+        
+        sig = "|".join(sorted(clean_stats)).lower()
+        if sig in SKILL_SIGNATURES:
+            return SKILL_SIGNATURES[sig]["name"].upper()
+        return ""
+
+    def reverse_engineer_playstyle(self, raw_name, raw_level):
+        """Matches a messy OCR playstyle name to a real one, and returns perfect name + description + level."""
+        closest = difflib.get_close_matches(raw_name.upper(), PLAYSTYLES.keys(), n=1, cutoff=0.4)
+        final_name = closest[0] if closest else raw_name
+        
+        # Level is always Lvl1 or Lvl2
+        level = "Lvl 1" if "1" in str(raw_level) or "l" in str(raw_level).lower() else "Lvl 2"
+        if "2" in str(raw_level): level = "Lvl 2"
+        
+        desc = PLAYSTYLES.get(final_name, "")
+        
+        return {
+            "playstyle_name": final_name,
+            "playstyle_level": level,
+            "playstyle_description": desc
+        }
+
+    def clean_preferred_foot(self, raw_str):
+        """Extracts exactly 2 digits representing weak and strong foot from OCR."""
+        nums = re.findall(r'\d', raw_str)
+        if len(nums) >= 2:
+            return nums[0] + nums[1]
+        return ""
+
+    def parse_summary(self, img):
         """Extracts data from the Summary / Overview tab"""
         data = {}
         
