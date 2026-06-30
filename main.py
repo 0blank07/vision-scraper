@@ -378,7 +378,7 @@ class ScraperBot:
             print("Step 6: Waiting 2 seconds then submitting Search...")
             time.sleep(2)
             self.adb.click(*self.coords["search_submit"])
-            time.sleep(8)
+            time.sleep(11)
             
             if self.check_and_recover_error() == "HOME":
                 print("Error on submit kicked to Home. Restarting full navigation...")
