@@ -140,38 +140,51 @@ class ScraperBot:
                     player_data["attributes"] = self.parser.parse_attributes(raw_text)
 
                 # Step 16-18: Playstyles
+                import re as _re
+                # STEP 1: Read names from tab screenshot FIRST — these are the PRIMARY names
+                tab_names = []
+                img_tab = images.get("playstyle_tab")
+                if img_tab is not None:
+                    for idx in range(1, 3):
+                        bkey = f"playstyle_name_{idx}"
+                        if bkey in self.bboxes:
+                            bname = self.parser.extract_text(img_tab, bbox=self.bboxes[bkey])
+                            bname = _re.sub(r'(?i)lvl\s*\d+', '', bname).strip()
+                            tab_names.append(bname)
+                        else:
+                            tab_names.append("")
+                
                 for j, ps_dict in enumerate(images.get("playstyles", [])):
                     img_ps = ps_dict.get("base")
                     img_ps_scroll = ps_dict.get("scroll")
                     if img_ps is not None:
-                        is_empty = False
-                        if "playstyle_name" in self.bboxes:
+                        raw_level = ""
+                        raw_desc_1 = ""
+                        raw_desc_2 = ""
+
+                        # STEP 2: Use tab name as primary
+                        raw_name = tab_names[j] if j < len(tab_names) else ""
+
+                        # STEP 3: Get level and description from popup
+                        if "playstyle_level" in self.bboxes:
+                            raw_level = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_level"])
+                                
+                        if "playstyle_description" in self.bboxes:
+                            raw_desc_1 = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_description"])
+                            if img_ps_scroll is not None:
+                                raw_desc_2 = self.parser.extract_text(img_ps_scroll, bbox=self.bboxes["playstyle_description"])
+
+                        # STEP 4: If tab name was blank, fallback to popup name
+                        if not raw_name and "playstyle_name" in self.bboxes:
                             px1, py1, px2, py2 = self.bboxes["playstyle_name"]
-                            if img_ps[py1:py2, px1:px2].std() < 5.0:
-                                is_empty = True
-                                
-                        if not is_empty:
-                            ps_data = {}
-                            raw_name = ""
-                            raw_level = ""
-                            raw_desc_1 = ""
-                            raw_desc_2 = ""
-                            
-                            if "playstyle_name" in self.bboxes:
+                            if img_ps[py1:py2, px1:px2].std() >= 5.0:  # Popup is actually open
                                 raw_name = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_name"])
-                                # Strip "Lvl X" if captured in the big box
-                                raw_name = __import__('re').sub(r'(?i)lvl\s*\d+', '', raw_name).strip()
-                                
-                            if "playstyle_level" in self.bboxes:
-                                raw_level = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_level"])
-                                
-                            if "playstyle_description" in self.bboxes:
-                                raw_desc_1 = self.parser.extract_text(img_ps, bbox=self.bboxes["playstyle_description"])
-                                if img_ps_scroll is not None:
-                                    raw_desc_2 = self.parser.extract_text(img_ps_scroll, bbox=self.bboxes["playstyle_description"])
-                            
+                                raw_name = _re.sub(r'(?i)lvl\s*\d+', '', raw_name).strip()
+                                    
+                        if raw_name:
+                            ps_data = {}
                             full_desc = raw_desc_1 + " " + raw_desc_2
-                            full_desc = __import__('re').sub(r'\s+', ' ', full_desc).strip()
+                            full_desc = _re.sub(r'\s+', ' ', full_desc).strip()
                             
                             ps_data["playstyle_name"] = raw_name
                             ps_data["playstyle_level"] = "Lvl 2" if "2" in str(raw_level) else "Lvl 1"
@@ -181,6 +194,7 @@ class ScraperBot:
                                 filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
                                 self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
                             player_data["playstyles"].append(ps_data)
+
 
                 # Step 19: Traits
                 if images.get("traits") is not None:
@@ -226,14 +240,14 @@ class ScraperBot:
                         img_ps = ps_dict.get("base")
                         img_ps_scroll = ps_dict.get("scroll")
                         
-                        if img_ps is not None and "playstyle_name" in self.bboxes:
-                            is_empty = False
+                        if img_ps is not None:
+                            is_popup_open = True
                             if "playstyle_name" in self.bboxes:
                                 px1, py1, px2, py2 = self.bboxes["playstyle_name"]
                                 if img_ps[py1:py2, px1:px2].std() < 5.0:
-                                    is_empty = True
+                                    is_popup_open = False
                             
-                            if not is_empty:
+                            if is_popup_open and "playstyle_name" in self.bboxes:
                                 x1, y1, x2, y2 = self.bboxes["playstyle_name"]
                                 ps_cv = img_ps[y1:y2, x1:x2]
                                 gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(ps_cv, cv2.COLOR_BGR2RGB)))
@@ -249,6 +263,15 @@ class ScraperBot:
                                         desc_cv_2 = img_ps_scroll[dy1:dy2, dx1:dx2]
                                         gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(desc_cv_2, cv2.COLOR_BGR2RGB)))
                                         gemini_prompt += f"Image {len(gemini_images)}: Playstyle Description {j+1} Part 2 (scrolled).\n"
+                            
+                            elif not is_popup_open:
+                                backup_box = f"playstyle_name_{j+1}"
+                                if backup_box in self.bboxes:
+                                    bx1, by1, bx2, by2 = self.bboxes[backup_box]
+                                    if img_ps[by1:by2, bx1:bx2].std() >= 5.0:
+                                        ps_cv = img_ps[by1:by2, bx1:bx2]
+                                        gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(ps_cv, cv2.COLOR_BGR2RGB)))
+                                        gemini_prompt += f"Image {len(gemini_images)}: Playstyle Name {j+1} BACKUP (Usually ALL CAPS. Output EXACTLY what you see. DO NOT INCLUDE 'Lvl').\n"
                             
                     if len(gemini_images) > 0:
                         gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ]\n}"
@@ -280,6 +303,9 @@ class ScraperBot:
                                         player_data["playstyles"][j]["playstyle_name"] = name
                                     if desc:
                                         player_data["playstyles"][j]["playstyle_description"] = desc
+                                    elif name and not desc:
+                                        db_match = self.parser.reverse_engineer_playstyle(name, "")
+                                        player_data["playstyles"][j]["playstyle_description"] = db_match["playstyle_description"]
                                     
                             print(f"  [Gemini API] Successfully extracted data for Player {player_number}!")
                         except Exception as e:
@@ -521,6 +547,7 @@ class ScraperBot:
         
         self.adb.click(*self.coords["tab_playstyles"])
         time.sleep(1.0)
+        images["playstyle_tab"] = self.adb.get_screenshot()  # Backup: read names from tab before opening popups
         images["playstyles"] = []
         
         self.adb.click(*self.coords["playstyle_i_1"])
