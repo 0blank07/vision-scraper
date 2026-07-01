@@ -84,17 +84,38 @@ class ScreenParser:
     def parse_skill_boosts(self, text):
         """Regex parser to find 'AttributeName +10' patterns in skill popups."""
         import difflib
+        import re
         
         # Matches words followed by an optional plus sign and numbers
         pattern = r'([a-zA-Z]+(?:\s[a-zA-Z]+)*)\s*\+?\s*(\d{1,3})'
         matches = re.findall(pattern, text)
         
         boosts = {}
+        positions = []
+        
         for attr, val in matches:
             attr = attr.strip()
+            lower_attr = attr.lower()
+            
+            # FIX 1: Filter out "Unlocks after..." or "... Reaches Lvl" strings
+            if "unlock" in lower_attr or "reach" in lower_attr or "lvl" in lower_attr:
+                continue
+                
+            # FIX 2: Handle garbled "Position Lm Position Cam Aggression"
+            # Extract all "Position <Pos>" and remove them from the attr string
+            pos_matches = re.findall(r'(?i)position\s+([a-zA-Z]{2,3})', attr)
+            for pos in pos_matches:
+                positions.append(pos.title())
+                
+            # Remove the matched positions and the word 'Position' from the attribute name
+            attr = re.sub(r'(?i)position\s+[a-zA-Z]{2,3}', '', attr).strip()
+            
+            # If the attribute is now empty (e.g. it was just positions), skip it
+            if not attr:
+                continue
             
             # Known OCR cutoff overrides
-            if attr.lower() == "shot": attr = "Long Shot" # Usually Long Shot gets cut off as Shot
+            if attr.lower() == "shot": attr = "Long Shot"
             elif attr.lower() == "tackle": attr = "Standing Tackle"
             elif attr.lower() == "passing": attr = "Short Passing"
             
@@ -102,7 +123,18 @@ class ScreenParser:
             closest = difflib.get_close_matches(attr, self.VALID_ATTRIBUTES, n=1, cutoff=0.6)
             final_attr = closest[0] if closest else attr.title()
             
-            boosts[final_attr] = f"+{val}"
+            # Add to boosts (avoids OCR duplicate glitches overwriting)
+            if final_attr not in boosts:
+                boosts[final_attr] = f"+{val}"
+                
+        # Handle positions list
+        if positions:
+            # Deduplicate in case OCR caught it multiple times
+            unique_positions = list(dict.fromkeys(positions))
+            # Standard JSON cannot have duplicate keys like `"Position": "Lm", "Position": "Cam"`
+            # so we store it as a list array: `"Positions": ["Lm", "Cam"]`
+            boosts["Positions"] = unique_positions
+            
         return boosts
 
     def reverse_engineer_skill(self, boosts_dict):
