@@ -1,146 +1,206 @@
-Follow this prompt:
-
-{
+        "OVR": 120,
+        "player_index": 1,
+        "skills": [
+            {
+                "skill_number": 1,
+                "name": "Wingback",
+                "image_saved": true,
+                "level_1_requirements": "OVR 1gG I16",
+                "level_1_boosts": {
+                    "Ball Control": "+10",
+                    "Crossing": "+10",
+                    "Sprint Speed": "+10",
+                    "Short Passing": "+10",
+                    "Agility": "+10",
+                    "Sliding Tackle": "+10"
+                },
+                "level_2_requirements": "Acceleration",
+                "level_2_boosts": {
+                    "Acceleration": "+20",
+                    "Awareness": "+20",
+                    "Ball Control": "+20",
+                    "Crossing": "+20",
+                    "Sprint Speed": "+20",
+                    "Short Passing": "+20",
+                    "Agility": "+20",
+                    "Sliding Tackle": "+20"
+                }
+            },
+            {
+                "skill_number": 2,
+                "name": "SCORING",
+                "image_saved": true,
+                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_1_boosts": {
+                    "Heading": "+20",
+                    "Finishing": "+20",
+                    "Shot Power": "+20",
+                    "Long Shot": "+20"
+                },
+                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_2_boosts": {
+                    "Heading": "+20",
+                    "Finishing": "+20",
+                    "Shot Power": "+20",
+                    "Long Shot": "+20"
+                }
+            },
+            {
+                "skill_number": 3,
+                "name": "PASSING",
+                "image_saved": true,
+                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_1_boosts": {
+                    "Crossing": "+20",
+                    "Long Passing": "+20",
+                    "Short Passing": "+20",
+                    "Vision": "+20"
+                },
+                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_2_boosts": {
+                    "Crossing": "+20",
+                    "Long Passing": "+20",
+                    "Short Passing": "+20",
+                    "Vision": "+20"
+                }
+            },
+            {
+                "skill_number": 4,
+                "name": "DRIBBLING",
+                "image_saved": true,
+                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_1_boosts": {
+                    "Ball Control": "+20",
+                    "Dribbling": "+20",
+                    "Reactions": "+20",
+                    "Agility": "+20"
+                },
+                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_2_boosts": {
+                    "Ball Control": "+20",
+                    "Dribbling": "+20",
+                    "Reactions": "+20",
+                    "Agility": "+20"
+                }
+            },
+            {
+                "skill_number": 5,
+                "name": "DEFENDING",
+                "image_saved": true,
+                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_1_boosts": {
+                    "Awareness": "+20",
+                    "Marking": "+20",
+                    "Standing Tackle": "+20",
+                    "Sliding Tackle": "+20"
+                },
+                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
+                "level_2_boosts": {
+                    "Awareness": "+20",
+                    "Marking": "+20",
+                    "Standing Tackle": "+20",
+                    "Sliding Tackle": "+20"
+                }
+            },
+            {
                 "skill_number": 6,
                 "name": "PHYSICAL",
                 "image_saved": true,
-                "level_1_requirements": "Unlocks after Traditional Winger reaches LVL 2",
+                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
                 "level_1_boosts": {
-                    "Unlocks After Traditional Winger Reaches Lvl": "+2",
-                    "Position Lm Position Cam Aggression": "+20",
+                    "Aggression": "+20",
                     "Strength": "+20",
                     "Balance": "+20",
-                    "Position Livi Position Cam Aggression": "+20",
                     "Jumping": "+20"
                 },
-                "level_2_requirements": "Unlocks after Traditional Winger reaches LVL 2",
+                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
                 "level_2_boosts": {
-                    "Unlocks After Traditional Winger Reaches Lvl": "+2",
-                    "Position Livi Position Cam Aggression": "+20",
+                    "Aggression": "+20",
                     "Strength": "+20",
                     "Balance": "+20",
                     "Jumping": "+20"
                 }
             }
         ],
-
-
-
-here you can see the problem we have to fix is here I have taken piece of player card information from players.json
-the problem occurs in :
-
-"level_1_boosts": {
-                    "Unlocks After Traditional Winger Reaches Lvl": "+2",
-                    "Position Lm Position Cam Aggression": "+20",
-                    "Strength": "+20",
-                    "Balance": "+20",
-                    "Position Livi Position Cam Aggression": "+20",
-                    "Jumping": "+20"
-                },
-
-"level_2_boosts": {
-    "Unlocks After Traditional Winger Reaches Lvl": "+2",
-    "Position Livi Position Cam Aggression": "+20",
-    "Strength": "+20",
-    "Balance": "+20",
-    "Jumping": "+20"
-}
-
-1st problem:
-
-level_1_boosts and level_2_boosts have problem: I will explain here:
-let's take level_1_boosts:
-"Unlocks After Traditional Winger Reaches Lvl": "+2", (here is nothing to boosts whenever level_number_boosts section's
-1st line starts with "Unlocks after" it should not be considered as a boost, it is just a) requirement for unlocking the level, so we need to remove this line from both level_1_boosts and level_2_boosts or level_3_boosts etc section boosts should not have any line that starts with "Unlocks after".
-
-
-2nd problem:
-
-here is how right it is using script:
-
-"level_1_boosts": {
-                    "Unlocks After Traditional Winger Reaches Lvl": "+2",
-                    "Position Lm Position Cam Aggression": "+20",
-                    "Strength": "+20",
-                    "Balance": "+20",
-                    "Position Livi Position Cam Aggression": "+20",
-                    "Jumping": "+20"
-                },
-
-
-but here is how I want:
-
-
-"level_1_boosts": {
-                    "Position": "Lm",
-                    "Position": "Cam",
-                    "Aggression": "+20",
-                    "Strength": "+20",
-                    "Balance": "+20",
-                    "Jumping": "+20"
-                },
-What I did?: first I removed this duplicate: "Position Livi Position Cam Aggression": "+20",
-Livi is nothing but lm ig just some ocr problem I think, in simple when we scroll boosts it records position box 2 times ig
-so we have to delete the duplicate which is second time it comes, in future this will continue we have to solve this
-
-the first one :                     "Position Lm Position Cam Aggression": "+20",
-because it was hard to draw box but we don't know how many position can come for what skill that's why box messed up and captures like this and will continue to capture like this we have to solve this:
-here you can handle data like this first separate positions one below one position then at last boosts subcategory
-
-eg. Position: "Lm",
-Position: "Cam",
-Aggression: "+20", got it  it should be same in players.json
-
-now, let's solve this problem by what I said:
-{
-                "skill_number": 2,
-                "name": "SCORING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Box-To-Box reaches LVL 2",
-                "level_1_boosts": {
-                    "Box Reaches Lvl": "+2",
-                    "Position Cm Position Cb Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Position Civi Position Cb Heading": "+20",
-                    "Long Shot": "+20"
-                },
-                "level_2_requirements": "Unlocks after Box-To-Box reaches LVL 2",
-                "level_2_boosts": {
-                    "Box Reaches Lvl": "+2",
-                    "Position Civi Position Cb Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Long Shot": "+20"
-                }
+        "playstyles": [
+            {
+                "playstyle_name": "Accelerator",
+                "playstyle_level": "Lvl 1",
+                "playstyle_description": "Ceerali Aaualdci ~ASSIGNED PRE-ASSIGNED Player is able to have a quick burst of speed when accelerating without the ball . Lvl 1: Accelerates faster without the ball: Lvl?2: Accelerates even faster without the ball _"
             },
-
-here is the solution how I want you can see above is mistakes that I don't want below is I solved:
-
-{
-                "skill_number": 2,
-                "name": "SCORING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Box-To-Box reaches LVL 2",
-                "level_1_boosts": {
-                    "Position": "Cm",
-                    "Position": "Cb",
-                    "Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Long Shot": "+20"
-                },
-                "level_2_requirements": "Unlocks after Box-To-Box reaches LVL 2",
-                "level_2_boosts": {
-                    "Position": "Cm",
-                    "Position": "Cb",
-                    "Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Long Shot": "+20"
-                }
+            {
+                "playstyle_name": "Guardian",
+                "playstyle_level": "Lvl 1",
+                "playstyle_description": "Player has a higher hard tackle proficiency and success rate: Lvl 1: Improved hard tackle range, speed and the ability to stop the ball directly at their feet: Lvl2: Much improved hard tackle range, speed and the ability to stop the ball directly at their feet: Nlccincroacoccbanco ftriccorinc Onnonontctunklo a rate Lvl 1: Improved hard tackle range, speed and the ability to stop the ball directly at their feet: Lvl2: Much improved hard tackle range, speed and the ability to stop the ball directly at their feet: Also increases chance of triggering opponent stumble or fall:"
+            }
+        ],
+        "card_name": "CAFU",
+        "shards": "68,770",
+        "full_name": "TCHLIST: 0/50",
+        "position": "",
+        "height": "",
+        "weight": "",
+        "preferred_foot": "",
+        "ovr": "",
+        "stamina_stars": 3,
+        "skill_moves_stars": 1,
+        "attributes": {
+            "Pace": 155,
+            "Shooting": 115,
+            "Passing": 138,
+            "Acceleration": 155,
+            "Finishing": 102,
+            "Short Passing": 142,
+            "Sprint Speed": 156,
+            "Long Shot": 118,
+            "Long Passing": 140,
+            "Shot Power": 128,
+            "Vision": 132,
+            "Positioning": 131,
+            "Crossing": 151,
+            "Volley": 105,
+            "Curve": 131,
+            "Penalties": 115,
+            "Free Kick": 122,
+            "Dribbling": 142,
+            "Defending": 150,
+            "Physical": 137,
+            "Dribbling_Stat": 140,
+            "Marking": 150,
+            "Strength": 136,
+            "Ball Control": 143,
+            "Standing Tackle": 151,
+            "Aggression": 142,
+            "Agility": 140,
+            "Sliding Tackle": 155,
+            "Jumping": 135,
+            "Reactions": 146,
+            "Awareness": 152
+        },
+        "event_name": "The World's Game Icon Player",
+        "work_rate_att": "Medium",
+        "work_rate_def": "High",
+        "traits": [
+            {
+                "name": "Roulette"
             },
+            {
+                "name": "Brick Fall"
+            },
+            {
+                "name": "Early Crosser"
+            },
+            {
+                "name": "Flair"
+            },
+            {
+                "name": "Outside Foot Shot"
+            }
+        ]
+    },
 
 
-I just found new finding that sometimes it doesn't use unlock after you can see: "Box Reaches Lvl": "+2",
-but still it uses reaches word you can guess this is wrong and remove cause it doesn't have any category and subcateogy name that could also be hint main hint can be reaches word ig
+You can see all skills above have level 2 but I checked in reality:
+in fc mobile and I saw that only Wingback has level 2 no other skills have level 2
+and this is happening with all player cards every skills level 2 is there in players.json but in reality it's different
+in fc mobile only some skills have level 2 or level 3 you are going to fix this

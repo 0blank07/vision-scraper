@@ -65,20 +65,26 @@ class ScreenParser:
 
     def parse_attributes(self, text):
         """Regex parser to find 'AttributeName 123' patterns in the text."""
-        # Matches words (Starting with Capital) followed by space and numbers
-        pattern = r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)*)\s+(\d{1,3})'
+        import difflib
+        import re
+        
+        # Matches words (case-insensitive) followed by optional space/colon/dash and numbers
+        pattern = r'([a-zA-Z]+(?:\s[a-zA-Z]+)*)\s*[:\-]?\s*(\d{2,3})'
         matches = re.findall(pattern, text)
         
         attributes = {}
         for attr, val in matches:
-            # Clean up common easyOCR hallucination on game fonts
-            attr = attr.replace('ppribbling', 'Dribbling').replace('Jumpingg', 'Jumping').strip()
+            attr = attr.strip()
+            
+            # Fuzzy match against the known valid attributes to auto-correct OCR errors
+            closest = difflib.get_close_matches(attr, self.VALID_ATTRIBUTES, n=1, cutoff=0.5)
+            final_attr = closest[0] if closest else attr.title()
             
             # Prevent sub-categories from deleting main categories
-            if attr in attributes:
-                attributes[f"{attr}_Stat"] = int(val)
+            if final_attr in attributes:
+                attributes[f"{final_attr}_Stat"] = int(val)
             else:
-                attributes[attr] = int(val)
+                attributes[final_attr] = int(val)
         return attributes
 
     def parse_skill_boosts(self, text):
@@ -94,8 +100,16 @@ class ScreenParser:
         positions = []
         
         for attr, val in matches:
+            # FIX 3: Ignore +0 boosts
+            if val == "0":
+                continue
+                
             attr = attr.strip()
             lower_attr = attr.lower()
+            
+            # FIX 4: Filter out "Ovr" completely
+            if lower_attr == "ovr":
+                continue
             
             # FIX 1: Filter out "Unlocks after..." or "... Reaches Lvl" strings
             if "unlock" in lower_attr or "reach" in lower_attr or "lvl" in lower_attr:

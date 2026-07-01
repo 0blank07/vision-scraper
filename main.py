@@ -273,8 +273,26 @@ class ScraperBot:
                                         gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(ps_cv, cv2.COLOR_BGR2RGB)))
                                         gemini_prompt += f"Image {len(gemini_images)}: Playstyle Name {j+1} BACKUP (Usually ALL CAPS. Output EXACTLY what you see. DO NOT INCLUDE 'Lvl').\n"
                             
+                    # 4. Overview Data Fallback
+                    needs_overview_fallback = False
+                    current_name = player_data.get("full_name", "")
+                    if any(char.isdigit() for char in current_name) or "list" in current_name.lower() or len(current_name) < 2:
+                        needs_overview_fallback = True
+                    for field in ["position", "height", "ovr"]:
+                        if not player_data.get(field) or str(player_data.get(field)).strip() == "":
+                            needs_overview_fallback = True
+                            break
+                            
+                    if needs_overview_fallback and images.get("overview") is not None:
+                        for field in ["full_name", "position", "height", "weight", "ovr"]:
+                            if field in self.bboxes:
+                                x1, y1, x2, y2 = self.bboxes[field]
+                                field_cv = images["overview"][y1:y2, x1:x2]
+                                gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(field_cv, cv2.COLOR_BGR2RGB)))
+                                gemini_prompt += f"Image {len(gemini_images)}: Overview field '{field}'. If completely blank, output empty string. Ignore 'WATCHLIST' text.\n"
+
                     if len(gemini_images) > 0:
-                        gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ]\n}"
+                        gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ],\n  \"full_name\": \"\",\n  \"position\": \"\",\n  \"height\": \"\",\n  \"weight\": \"\",\n  \"ovr\": \"\"\n}"
                         try:
                             print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}...")
                             client = genai.Client()
@@ -286,8 +304,9 @@ class ScraperBot:
                             gemini_data = json.loads(response.text)
                             
                             # Merge back into player_data
-                            if "preferred_foot" in gemini_data:
-                                player_data["preferred_foot"] = gemini_data["preferred_foot"]
+                            for field in ["preferred_foot", "full_name", "position", "height", "weight", "ovr"]:
+                                if field in gemini_data and gemini_data[field]:
+                                    player_data[field] = str(gemini_data[field]).replace("WATCHLIST", "").replace("TCHLIST", "").strip()
                                 
                             for i, skill_name in enumerate(gemini_data.get("skills", [])):
                                 if i < len(player_data["skills"]) and skill_name:
@@ -483,7 +502,6 @@ class ScraperBot:
                 self.recent_names.append(card_name)
                 if len(self.recent_names) > 8: self.recent_names.pop(0)
             
-        player_max_level = None
         images["skills"] = []
         for i, skill_coord in enumerate(self.coords["skills"]):
             self.adb.click(*skill_coord)
@@ -498,24 +516,21 @@ class ScraperBot:
             self.adb.swipe(800, 300, 800, 600, 500)
             time.sleep(1.0)
             
-            if player_max_level is None:
-                self.adb.click(952, 270)
+            # Check max level dynamically for EVERY skill, since secondary skills often max at 1
+            self.adb.click(952, 270)
+            time.sleep(1.0)
+            img_drop = self.adb.get_screenshot()
+            skill_max_level = 1
+            if img_drop is not None:
+                drop_text = self.parser.extract_text(img_drop, (900, 380, 1000, 520)).lower()
+                if "3" in drop_text or "level 3" in drop_text: skill_max_level = 3
+                elif "2" in drop_text or "level 2" in drop_text: skill_max_level = 2
+            
+            if skill_max_level == 1:
+                self.adb.click(952, 270) # Close dropdown if we aren't clicking a higher level
                 time.sleep(1.0)
-                img_drop = self.adb.get_screenshot()
-                max_level = 1
-                if img_drop is not None:
-                    drop_text = self.parser.extract_text(img_drop, (900, 380, 1000, 520)).lower()
-                    if "3" in drop_text or "level 3" in drop_text: max_level = 3
-                    elif "2" in drop_text or "level 2" in drop_text: max_level = 2
-                player_max_level = max_level
-                if player_max_level == 1:
-                    self.adb.click(952, 270)
-                    time.sleep(1.0)
                     
-            if player_max_level >= 2:
-                if i != 0:
-                    self.adb.click(952, 270)
-                    time.sleep(1.0)
+            if skill_max_level >= 2:
                 self.adb.click(941, 411)
                 time.sleep(1.0)
                 s_data["level_2"] = self.adb.get_screenshot()
@@ -525,7 +540,7 @@ class ScraperBot:
                 self.adb.swipe(800, 300, 800, 600, 500)
                 time.sleep(1.0)
                 
-            if player_max_level == 3:
+            if skill_max_level == 3:
                 self.adb.click(952, 270)
                 time.sleep(1.0)
                 self.adb.click(940, 474)
@@ -542,7 +557,7 @@ class ScraperBot:
             images["skills"].append(s_data)
             
         self.adb.click(*self.coords["tab_attributes"])
-        time.sleep(1.0)
+        time.sleep(2.5)  # Increased from 1.0s to allow game UI to render stats
         images["attributes"] = self.adb.get_screenshot()
         
         self.adb.click(*self.coords["tab_playstyles"])
