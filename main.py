@@ -136,8 +136,12 @@ class ScraperBot:
 
                 # Step 15: Attributes
                 if images.get("attributes") is not None and "attributes" in self.bboxes:
-                    raw_text = self.parser.extract_text(images["attributes"], bbox=self.bboxes["attributes"])
-                    player_data["attributes"] = self.parser.parse_attributes(raw_text)
+                    raw_text_1 = self.parser.extract_text(images["attributes"], bbox=self.bboxes["attributes"])
+                    raw_text_2 = ""
+                    if images.get("attributes_scroll") is not None:
+                        raw_text_2 = self.parser.extract_text(images["attributes_scroll"], bbox=self.bboxes["attributes"])
+                    combined_text = raw_text_1 + " " + raw_text_2
+                    player_data["attributes"] = self.parser.parse_attributes(combined_text)
 
                 # Step 16-18: Playstyles
                 import re as _re
@@ -559,6 +563,11 @@ class ScraperBot:
         self.adb.click(*self.coords["tab_attributes"])
         time.sleep(2.5)  # Increased from 1.0s to allow game UI to render stats
         images["attributes"] = self.adb.get_screenshot()
+        self.adb.swipe(800, 600, 800, 300, 500)
+        time.sleep(1.0)
+        images["attributes_scroll"] = self.adb.get_screenshot()
+        self.adb.swipe(800, 300, 800, 600, 500)
+        time.sleep(1.0)
         
         self.adb.click(*self.coords["tab_playstyles"])
         time.sleep(1.0)
