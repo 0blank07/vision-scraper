@@ -652,7 +652,6 @@ class ScraperBot:
         
         self.adb.click(1048, 398) # Click background to close keyboard
         time.sleep(1.5)
-        
         self.adb.click(1060, 824) # Click Search button
         print("Waiting for results to load...")
         time.sleep(4.0) # Wait for new grid to load
