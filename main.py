@@ -4,12 +4,15 @@ import os
 import json
 import threading
 import queue
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import PIL.Image
 from adb_controller import ADBController
 from screen_parser import ScreenParser
 from data_manager import DataManager
+
+load_dotenv()
 
 class ScraperBot:
     def __init__(self):
@@ -84,7 +87,7 @@ class ScraperBot:
 
                 # Step 10: Overview Tab
                 if images.get("overview") is not None:
-                    for key in ["full_name", "position", "height", "weight", "preferred_foot", "ovr"]:
+                    for key in ["full_name", "position", "height", "weight", "ovr"]:
                         if key in self.bboxes:
                             allowlist = "012345LRlr" if key == "preferred_foot" else None
                             player_data[key] = self.parser.extract_text(images["overview"], bbox=self.bboxes[key], allowlist=allowlist)
@@ -224,12 +227,12 @@ class ScraperBot:
                     gemini_images = []
                     gemini_prompt = "You are a highly precise data extraction assistant. I will provide you with several cropped images from a video game UI. Please extract the exact text from each image in the order provided, and output JSON. Output EXACTLY what you see. If an image is completely blank or blurry, output an empty string. Do not guess or make up words.\n\n"
                     
-                    # 1. Preferred foot
-                    if images.get("overview") is not None and "preferred_foot" in self.bboxes:
-                        x1, y1, x2, y2 = self.bboxes["preferred_foot"]
-                        pref_foot_cv = images["overview"][y1:y2, x1:x2]
-                        gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(pref_foot_cv, cv2.COLOR_BGR2RGB)))
-                        gemini_prompt += f"Image {len(gemini_images)}: Preferred Foot (Should be 2 digits like '54' representing weak/strong foot. If empty, output empty string)\n"
+                    # 1. Header Strip
+                    if images.get("overview") is not None and "header_strip" in self.bboxes:
+                        x1, y1, x2, y2 = self.bboxes["header_strip"]
+                        strip_cv = images["overview"][y1:y2, x1:x2]
+                        gemini_images.append(PIL.Image.fromarray(cv2.cvtColor(strip_cv, cv2.COLOR_BGR2RGB)))
+                        gemini_prompt += f"Image {len(gemini_images)}: Header Strip. This image contains the player's Height, Weight, Age (if present), Preferred Foot (e.g. 54), Nation Name, and League Name. Please extract 'preferred_foot', 'age' (if present, else empty), 'nation_name', and 'league_name' from this strip.\n"
                         
                     # 2. Skill Names
                     for i, s_data in enumerate(images.get("skills", [])):
@@ -297,42 +300,55 @@ class ScraperBot:
 
                     if len(gemini_images) > 0:
                         gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ],\n  \"full_name\": \"\",\n  \"position\": \"\",\n  \"height\": \"\",\n  \"weight\": \"\",\n  \"ovr\": \"\",\n  \"age\": \"\",\n  \"nation_name\": \"\",\n  \"league_name\": \"\"\n}"
-                        try:
-                            print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}...")
-                            client = genai.Client()
-                            response = client.models.generate_content(
-                                model='gemini-2.5-flash',
-                                contents=[gemini_prompt] + gemini_images,
-                                config=types.GenerateContentConfig(response_mime_type="application/json")
-                            )
-                            gemini_data = json.loads(response.text)
-                            
-                            # Merge back into player_data
-                            for field in ["preferred_foot", "full_name", "position", "height", "weight", "ovr", "age", "nation_name", "league_name"]:
-                                if field in gemini_data and gemini_data[field]:
-                                    player_data[field] = str(gemini_data[field]).replace("WATCHLIST", "").replace("TCHLIST", "").strip()
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}... (Attempt {attempt + 1})")
+                                client = genai.Client()
+                                response = client.models.generate_content(
+                                    model='gemini-2.5-flash',
+                                    contents=[gemini_prompt] + gemini_images,
+                                    config=types.GenerateContentConfig(response_mime_type="application/json")
+                                )
+                                gemini_data = json.loads(response.text)
+                                print(f"  [DEBUG] Gemini returned: age='{gemini_data.get('age')}', nation='{gemini_data.get('nation_name')}', league='{gemini_data.get('league_name')}', foot='{gemini_data.get('preferred_foot')}'")
                                 
-                            for i, skill_name in enumerate(gemini_data.get("skills", [])):
-                                if i < len(player_data["skills"]) and skill_name:
-                                    player_data["skills"][i]["name"] = skill_name
+                                # Merge back into player_data
+                                for field in ["preferred_foot", "full_name", "position", "height", "weight", "ovr", "age", "nation_name", "league_name"]:
+                                    if field in gemini_data and gemini_data[field]:
+                                        player_data[field] = str(gemini_data[field]).replace("WATCHLIST", "").replace("TCHLIST", "").strip()
                                     
-                            for j, ps_obj in enumerate(gemini_data.get("playstyles", [])):
-                                if j < len(player_data["playstyles"]) and ps_obj:
-                                    name = ps_obj.get("name", "")
-                                    desc = ps_obj.get("description", "")
-                                    name = __import__('re').sub(r'(?i)lvl\s*\d+', '', name).strip()
-                                    
-                                    if name:
-                                        player_data["playstyles"][j]["playstyle_name"] = name
-                                    if desc:
-                                        player_data["playstyles"][j]["playstyle_description"] = desc
-                                    elif name and not desc:
-                                        db_match = self.parser.reverse_engineer_playstyle(name, "")
-                                        player_data["playstyles"][j]["playstyle_description"] = db_match["playstyle_description"]
-                                    
-                            print(f"  [Gemini API] Successfully extracted data for Player {player_number}!")
-                        except Exception as e:
-                            print(f"  [Gemini API] Failed: {e}")
+                                for i, skill_name in enumerate(gemini_data.get("skills", [])):
+                                    if i < len(player_data["skills"]) and skill_name:
+                                        player_data["skills"][i]["name"] = skill_name
+                                        
+                                for j, ps_obj in enumerate(gemini_data.get("playstyles", [])):
+                                    if j < len(player_data["playstyles"]) and ps_obj:
+                                        name = ps_obj.get("name", "")
+                                        desc = ps_obj.get("description", "")
+                                        name = __import__('re').sub(r'(?i)lvl\s*\d+', '', name).strip()
+                                        
+                                        if name:
+                                            player_data["playstyles"][j]["playstyle_name"] = name
+                                        if desc:
+                                            player_data["playstyles"][j]["playstyle_description"] = desc
+                                        elif name and not desc:
+                                            db_match = self.parser.reverse_engineer_playstyle(name, "")
+                                            player_data["playstyles"][j]["playstyle_description"] = db_match["playstyle_description"]
+                                        
+                                print(f"  [Gemini API] Successfully extracted data for Player {player_number}!")
+                                break  # Break out of retry loop on success
+                            except Exception as e:
+                                error_str = str(e)
+                                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                                    print(f"  [Gemini API] Rate Limit Hit (429). Pausing for 6 seconds... (Attempt {attempt+1}/{max_retries})")
+                                    import time
+                                    time.sleep(6)
+                                    if attempt == max_retries - 1:
+                                        print(f"  [Gemini API] Failed after {max_retries} attempts: {e}")
+                                else:
+                                    print(f"  [Gemini API] Failed: {e}")
+                                    break
 
                 # Save data
                 self.data_mgr.save_player(player_data)
