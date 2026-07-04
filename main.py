@@ -282,13 +282,13 @@ class ScraperBot:
                     current_name = player_data.get("full_name", "")
                     if any(char.isdigit() for char in current_name) or "list" in current_name.lower() or len(current_name) < 2:
                         needs_overview_fallback = True
-                    for field in ["position", "height", "ovr"]:
+                    for field in ["position", "height", "ovr", "age", "nation_name", "league_name"]:
                         if not player_data.get(field) or str(player_data.get(field)).strip() == "":
                             needs_overview_fallback = True
                             break
                             
                     if needs_overview_fallback and images.get("overview") is not None:
-                        for field in ["full_name", "position", "height", "weight", "ovr"]:
+                        for field in ["full_name", "position", "height", "weight", "ovr", "age", "nation_name", "league_name"]:
                             if field in self.bboxes:
                                 x1, y1, x2, y2 = self.bboxes[field]
                                 field_cv = images["overview"][y1:y2, x1:x2]
@@ -296,7 +296,7 @@ class ScraperBot:
                                 gemini_prompt += f"Image {len(gemini_images)}: Overview field '{field}'. If completely blank, output empty string. Ignore 'WATCHLIST' text.\n"
 
                     if len(gemini_images) > 0:
-                        gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ],\n  \"full_name\": \"\",\n  \"position\": \"\",\n  \"height\": \"\",\n  \"weight\": \"\",\n  \"ovr\": \"\"\n}"
+                        gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ],\n  \"full_name\": \"\",\n  \"position\": \"\",\n  \"height\": \"\",\n  \"weight\": \"\",\n  \"ovr\": \"\",\n  \"age\": \"\",\n  \"nation_name\": \"\",\n  \"league_name\": \"\"\n}"
                         try:
                             print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}...")
                             client = genai.Client()
@@ -308,7 +308,7 @@ class ScraperBot:
                             gemini_data = json.loads(response.text)
                             
                             # Merge back into player_data
-                            for field in ["preferred_foot", "full_name", "position", "height", "weight", "ovr"]:
+                            for field in ["preferred_foot", "full_name", "position", "height", "weight", "ovr", "age", "nation_name", "league_name"]:
                                 if field in gemini_data and gemini_data[field]:
                                     player_data[field] = str(gemini_data[field]).replace("WATCHLIST", "").replace("TCHLIST", "").strip()
                                 
