@@ -1,206 +1,234 @@
-        "OVR": 120,
-        "player_index": 1,
-        "skills": [
-            {
-                "skill_number": 1,
-                "name": "Wingback",
-                "image_saved": true,
-                "level_1_requirements": "OVR 1gG I16",
-                "level_1_boosts": {
-                    "Ball Control": "+10",
-                    "Crossing": "+10",
-                    "Sprint Speed": "+10",
-                    "Short Passing": "+10",
-                    "Agility": "+10",
-                    "Sliding Tackle": "+10"
-                },
-                "level_2_requirements": "Acceleration",
-                "level_2_boosts": {
-                    "Acceleration": "+20",
-                    "Awareness": "+20",
-                    "Ball Control": "+20",
-                    "Crossing": "+20",
-                    "Sprint Speed": "+20",
-                    "Short Passing": "+20",
-                    "Agility": "+20",
-                    "Sliding Tackle": "+20"
-                }
-            },
-            {
-                "skill_number": 2,
-                "name": "SCORING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_1_boosts": {
-                    "Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Long Shot": "+20"
-                },
-                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_2_boosts": {
-                    "Heading": "+20",
-                    "Finishing": "+20",
-                    "Shot Power": "+20",
-                    "Long Shot": "+20"
-                }
-            },
-            {
-                "skill_number": 3,
-                "name": "PASSING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_1_boosts": {
-                    "Crossing": "+20",
-                    "Long Passing": "+20",
-                    "Short Passing": "+20",
-                    "Vision": "+20"
-                },
-                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_2_boosts": {
-                    "Crossing": "+20",
-                    "Long Passing": "+20",
-                    "Short Passing": "+20",
-                    "Vision": "+20"
-                }
-            },
-            {
-                "skill_number": 4,
-                "name": "DRIBBLING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_1_boosts": {
-                    "Ball Control": "+20",
-                    "Dribbling": "+20",
-                    "Reactions": "+20",
-                    "Agility": "+20"
-                },
-                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_2_boosts": {
-                    "Ball Control": "+20",
-                    "Dribbling": "+20",
-                    "Reactions": "+20",
-                    "Agility": "+20"
-                }
-            },
-            {
-                "skill_number": 5,
-                "name": "DEFENDING",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_1_boosts": {
-                    "Awareness": "+20",
-                    "Marking": "+20",
-                    "Standing Tackle": "+20",
-                    "Sliding Tackle": "+20"
-                },
-                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_2_boosts": {
-                    "Awareness": "+20",
-                    "Marking": "+20",
-                    "Standing Tackle": "+20",
-                    "Sliding Tackle": "+20"
-                }
-            },
-            {
-                "skill_number": 6,
-                "name": "PHYSICAL",
-                "image_saved": true,
-                "level_1_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_1_boosts": {
-                    "Aggression": "+20",
-                    "Strength": "+20",
-                    "Balance": "+20",
-                    "Jumping": "+20"
-                },
-                "level_2_requirements": "Unlocks after Wingback reaches LVL2",
-                "level_2_boosts": {
-                    "Aggression": "+20",
-                    "Strength": "+20",
-                    "Balance": "+20",
-                    "Jumping": "+20"
-                }
-            }
-        ],
-        "playstyles": [
-            {
-                "playstyle_name": "Accelerator",
-                "playstyle_level": "Lvl 1",
-                "playstyle_description": "Ceerali Aaualdci ~ASSIGNED PRE-ASSIGNED Player is able to have a quick burst of speed when accelerating without the ball . Lvl 1: Accelerates faster without the ball: Lvl?2: Accelerates even faster without the ball _"
-            },
-            {
-                "playstyle_name": "Guardian",
-                "playstyle_level": "Lvl 1",
-                "playstyle_description": "Player has a higher hard tackle proficiency and success rate: Lvl 1: Improved hard tackle range, speed and the ability to stop the ball directly at their feet: Lvl2: Much improved hard tackle range, speed and the ability to stop the ball directly at their feet: Nlccincroacoccbanco ftriccorinc Onnonontctunklo a rate Lvl 1: Improved hard tackle range, speed and the ability to stop the ball directly at their feet: Lvl2: Much improved hard tackle range, speed and the ability to stop the ball directly at their feet: Also increases chance of triggering opponent stumble or fall:"
-            }
-        ],
-        "card_name": "CAFU",
-        "shards": "68,770",
-        "full_name": "TCHLIST: 0/50",
-        "position": "",
-        "height": "",
-        "weight": "",
-        "preferred_foot": "",
-        "ovr": "",
-        "stamina_stars": 3,
-        "skill_moves_stars": 1,
-        "attributes": {
-            "Pace": 155,
-            "Shooting": 115,
-            "Passing": 138,
-            "Acceleration": 155,
-            "Finishing": 102,
-            "Short Passing": 142,
-            "Sprint Speed": 156,
-            "Long Shot": 118,
-            "Long Passing": 140,
-            "Shot Power": 128,
-            "Vision": 132,
-            "Positioning": 131,
-            "Crossing": 151,
-            "Volley": 105,
-            "Curve": 131,
-            "Penalties": 115,
-            "Free Kick": 122,
-            "Dribbling": 142,
-            "Defending": 150,
-            "Physical": 137,
-            "Dribbling_Stat": 140,
-            "Marking": 150,
-            "Strength": 136,
-            "Ball Control": 143,
-            "Standing Tackle": 151,
-            "Aggression": 142,
-            "Agility": 140,
-            "Sliding Tackle": 155,
-            "Jumping": 135,
-            "Reactions": 146,
-            "Awareness": 152
-        },
-        "event_name": "The World's Game Icon Player",
-        "work_rate_att": "Medium",
-        "work_rate_def": "High",
-        "traits": [
-            {
-                "name": "Roulette"
-            },
-            {
-                "name": "Brick Fall"
-            },
-            {
-                "name": "Early Crosser"
-            },
-            {
-                "name": "Flair"
-            },
-            {
-                "name": "Outside Foot Shot"
-            }
-        ]
-    },
-
-
-You can see all skills above have level 2 but I checked in reality:
-in fc mobile and I saw that only Wingback has level 2 no other skills have level 2
-and this is happening with all player cards every skills level 2 is there in players.json but in reality it's different
-in fc mobile only some skills have level 2 or level 3 you are going to fix this
+Gemini API Rate Limit
+Free tier
+Project
+Zenith
+Time Range
+28 Days
+error
+You have reached a rate limit. Set up billing to increase your limits and unblock your work.
+Rate limits by model
+Peak usage per model compared to its limit over the last 28 days
+Model
+Category
+RPM
+TPM
+RPD
+Charts
+Gemini 2.5 Flash
+Text-out models
+1 / 5
+5.29K / 250K
+22 / 20
+Antigravity
+Agents
+0 / 60
+0 / 100K
+0 / 100
+Deep Research Pro Preview
+Agents
+0 / 0
+0 / 0
+0 / 0
+Gemini 2 Flash
+Text-out models
+0 / 0
+0 / 0
+0 / 0
+Gemini 2 Flash Lite
+Text-out models
+0 / 0
+0 / 0
+0 / 0
+Computer Use Preview
+Other models
+0 / 0
+0 / 0
+0 / 0
+Nano Banana (Gemini 2.5 Flash Preview Image)
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Gemini 2.5 Flash Lite
+Text-out models
+0 / 10
+0 / 250K
+0 / 20
+Gemini 2.5 Flash TTS
+Multi-modal generative models
+0 / 3
+0 / 10K
+0 / 10
+Gemini 2.5 Pro
+Text-out models
+0 / 0
+0 / 0
+0 / 0
+Gemini 2.5 Pro TTS
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Gemini 3 Flash
+Text-out models
+0 / 5
+0 / 250K
+0 / 20
+Nano Banana Pro (Gemini 3 Pro Image)
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Gemini 3.1 Pro
+Text-out models
+0 / 0
+0 / 0
+0 / 0
+Nano Banana 2 (Gemini 3.1 Flash Image)
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Gemini 3.1 Flash Lite
+Text-out models
+0 / 15
+0 / 250K
+0 / 500
+Gemini 3.1 Flash TTS
+Multi-modal generative models
+0 / 3
+0 / 10K
+0 / 10
+Gemini 3.5 Flash
+Text-out models
+0 / 5
+0 / 250K
+0 / 20
+Gemini Embedding 1
+Other models
+0 / 100
+0 / 30K
+0 / 1K
+Gemini Embedding 2
+Other models
+0 / 100
+0 / 30K
+0 / 1K
+Gemini Robotics ER 1.5 Preview
+Other models
+0 / 10
+0 / 250K
+0 / 20
+Gemini Robotics ER 1.6 Preview
+Other models
+0 / 5
+0 / 250K
+0 / 20
+Gemma 4 26B
+Other models
+0 / 15
+0 / Unlimited
+0 / 1.5K
+Gemma 4 31B
+Other models
+0 / 15
+0 / Unlimited
+0 / 1.5K
+Imagen 4 Fast Generate
+Multi-modal generative models	-	-
+0 / 25
+Imagen 4 Generate
+Multi-modal generative models	-	-
+0 / 25
+Imagen 4 Ultra Generate
+Multi-modal generative models	-	-
+0 / 25
+Lyria 3 Clip
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Lyria 3 Pro
+Multi-modal generative models
+0 / 0
+0 / 0
+0 / 0
+Veo 3 Fast Generate
+Multi-modal generative models
+0 / 0
+-
+0 / 0
+Veo 3 Generate
+Multi-modal generative models
+0 / 0
+-
+0 / 0
+Veo 3 Lite Generate
+Multi-modal generative models
+0 / 0
+-
+0 / 0
+Gemini 2.5 Flash Native Audio Dialog
+Live API
+0 / Unlimited
+0 / 1M
+0 / Unlimited
+Gemini 3 Flash Live
+Live API
+0 / Unlimited
+0 / 65K
+0 / Unlimited
+Gemini 3.5 Live Translate
+Live API
+0 / Unlimited
+0 / 20K
+0 / Unlimited
+Tools
+Deep Research Pro Preview
+Map grounding	-	-
+0 / 500
+Gemini 2 Flash
+Map grounding	-	-
+0 / 500
+Computer Use Preview
+Map grounding	-	-
+0 / 500
+Gemini 2.5 Flash
+Map grounding	-	-
+0 / 500
+Gemini 2.5 Flash Lite
+Map grounding	-	-
+0 / 500
+Gemini 2.5 Pro
+Map grounding	-	-
+0 / 0
+Gemini 3 Flash
+Map grounding	-	-
+0 / 0
+Gemini 3.1 Pro
+Map grounding	-	-
+0 / 0
+Gemini 3.1 Flash Lite
+Map grounding	-	-
+0 / 500
+Gemini 3.1 Flash TTS
+Map grounding	-	-
+0 / 500
+Gemini 3.5 Flash
+Map grounding	-	-
+0 / 0
+Gemini Robotics ER 1.6 Preview
+Map grounding	-	-
+0 / 500
+Gemini 2
+Search grounding	-	-
+0 / 1.5K
+Gemini 2.5
+Search grounding	-	-
+0 / 1.5K
+Gemini 3
+Search grounding	-	-
+0 / 0
+Default
+Search grounding	-	-
+0 / 1.5K

@@ -47,6 +47,8 @@ def setup_database():
             work_rate_att VARCHAR(20),
             work_rate_def VARCHAR(20),
             portrait_url VARCHAR(255),
+            nation_name VARCHAR(100),
+            league_name VARCHAR(100),
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
@@ -135,8 +137,8 @@ def sync_data():
         # 1. Upsert Player
         cur.execute("""
             INSERT INTO vision_players 
-            (player_id, card_name, full_name, ovr, position, height, weight, preferred_foot, event_name, shards, stamina_stars, skill_moves_stars, work_rate_att, work_rate_def, portrait_url)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (player_id, card_name, full_name, ovr, position, height, weight, preferred_foot, event_name, shards, stamina_stars, skill_moves_stars, work_rate_att, work_rate_def, portrait_url, nation_name, league_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (player_id) DO UPDATE SET
             full_name = EXCLUDED.full_name,
             position = EXCLUDED.position,
@@ -145,12 +147,14 @@ def sync_data():
             preferred_foot = EXCLUDED.preferred_foot,
             shards = EXCLUDED.shards,
             portrait_url = EXCLUDED.portrait_url,
+            nation_name = EXCLUDED.nation_name,
+            league_name = EXCLUDED.league_name,
             updated_at = CURRENT_TIMESTAMP;
         """, (
             pid, p.get("card_name"), p.get("full_name"), p.get("ovr") or p.get("OVR"), p.get("position"),
             p.get("height"), p.get("weight"), p.get("preferred_foot"), p.get("event_name"), p.get("shards"),
             p.get("stamina_stars"), p.get("skill_moves_stars"), p.get("work_rate_att"), p.get("work_rate_def"),
-            portrait_url
+            portrait_url, p.get("nation_name"), p.get("league_name")
         ))
 
         # 2. Upsert Attributes

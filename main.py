@@ -20,6 +20,18 @@ class ScraperBot:
         self.parser = ScreenParser()
         self.data_mgr = DataManager()
         
+        self.gemini_models = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3-flash", "gemini-3.5-flash"]
+        self.current_model_index = 0
+        
+        raw_keys = os.getenv("GEMINI_API_KEYS", "")
+        self.api_keys = [k.strip() for k in raw_keys.split(",") if k.strip()]
+        if not self.api_keys:
+            # Fallback to older single key format if needed
+            single_key = os.getenv("GEMINI_API_KEY", "")
+            if single_key:
+                self.api_keys = [single_key.strip()]
+        self.current_key_index = 0
+        
         # --- PRECISE COORDINATES FROM USER ---
         self.coords = {
             "signings": (808, 844),
@@ -223,7 +235,7 @@ class ScraperBot:
                                 player_data["traits"].append(trait_data)
 
                 # --- GEMINI API FALLBACK FOR TRICKY TEXT ---
-                if os.environ.get("GEMINI_API_KEY"):
+                if getattr(self, "api_keys", None) and len(self.api_keys) > 0:
                     gemini_images = []
                     gemini_prompt = "You are a highly precise data extraction assistant. I will provide you with several cropped images from a video game UI. Please extract the exact text from each image in the order provided, and output JSON. Output EXACTLY what you see. If an image is completely blank or blurry, output an empty string. Do not guess or make up words.\n\n"
                     
@@ -300,13 +312,15 @@ class ScraperBot:
 
                     if len(gemini_images) > 0:
                         gemini_prompt += "\nOutput JSON format:\n{\n  \"preferred_foot\": \"54\",\n  \"skills\": [\"SCORING\", \"DEFENDING\", ...],\n  \"playstyles\": [ {\"name\": \"FINESSE SHOT\", \"description\": \"combined description here\"}, ... ],\n  \"full_name\": \"\",\n  \"position\": \"\",\n  \"height\": \"\",\n  \"weight\": \"\",\n  \"ovr\": \"\",\n  \"age\": \"\",\n  \"nation_name\": \"\",\n  \"league_name\": \"\"\n}"
-                        max_retries = 3
-                        for attempt in range(max_retries):
+                        attempt = 0
+                        while True:
+                            current_model = self.gemini_models[self.current_model_index]
+                            current_key = self.api_keys[self.current_key_index]
                             try:
-                                print(f"  [Gemini API] Batch processing {len(gemini_images)} tricky fields for Player {player_number}... (Attempt {attempt + 1})")
-                                client = genai.Client()
+                                print(f"  [Gemini API] Batch processing {len(gemini_images)} fields for Player {player_number} using {current_model} on Key {self.current_key_index + 1}... (Attempt {attempt + 1})")
+                                client = genai.Client(api_key=current_key)
                                 response = client.models.generate_content(
-                                    model='gemini-2.5-flash',
+                                    model=current_model,
                                     contents=[gemini_prompt] + gemini_images,
                                     config=types.GenerateContentConfig(response_mime_type="application/json")
                                 )
@@ -341,11 +355,31 @@ class ScraperBot:
                             except Exception as e:
                                 error_str = str(e)
                                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                                    print(f"  [Gemini API] Rate Limit Hit (429). Pausing for 6 seconds... (Attempt {attempt+1}/{max_retries})")
-                                    import time
-                                    time.sleep(6)
-                                    if attempt == max_retries - 1:
-                                        print(f"  [Gemini API] Failed after {max_retries} attempts: {e}")
+                                    attempt += 1
+                                    if attempt >= 3:
+                                        if self.current_model_index < len(self.gemini_models) - 1:
+                                            self.current_model_index += 1
+                                            print(f"  [Gemini API] Daily limit likely reached for {current_model}. Falling back to {self.gemini_models[self.current_model_index]}...")
+                                            attempt = 0
+                                        else:
+                                            print(f"  [Gemini API] ALL MODELS EXHAUSTED on Key {self.current_key_index + 1}!")
+                                            if self.current_key_index < len(self.api_keys) - 1:
+                                                self.current_key_index += 1
+                                                self.current_model_index = 0
+                                                print(f"  [Gemini API] Swapping to Key {self.current_key_index + 1} and resetting to {self.gemini_models[0]}...")
+                                                attempt = 0
+                                            else:
+                                                print(f"  [Gemini API] ALL KEYS EXHAUSTED! Failed after multiple attempts: {e}")
+                                                break
+                                    else:
+                                        import time, re
+                                        wait_time = 15.0 * attempt  # Fallback to exponential
+                                        match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
+                                        if match:
+                                            wait_time = float(match.group(1)) + 1.0 # Read directly from Google's response + 1s buffer
+                                        
+                                        print(f"  [Gemini API] Rate Limit Hit (429) for {current_model} on Key {self.current_key_index + 1}. Pausing for {wait_time:.1f} seconds... (Attempt {attempt}/3)")
+                                        time.sleep(wait_time)
                                 else:
                                     print(f"  [Gemini API] Failed: {e}")
                                     break
