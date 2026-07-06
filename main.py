@@ -228,7 +228,7 @@ class ScraperBot:
                         if name_key in self.bboxes:
                             trait_name = self.parser.extract_text(img_traits, bbox=self.bboxes[name_key])
                             if len(trait_name) > 2:
-                                trait_data = {"name": trait_name}
+                                trait_data = {"name": trait_name, "trait_number": t}
                                 if img_key in self.bboxes:
                                     filepath = f"output/images/traits/ovr{ovr}_p{player_number}_t{t}.png"
                                     self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)

@@ -93,6 +93,36 @@ def setup_database():
         );
     """)
 
+    # 5. Nations Table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vision_player_nations (
+            player_id VARCHAR(64) PRIMARY KEY REFERENCES vision_players(player_id) ON DELETE CASCADE,
+            nation_name VARCHAR(100),
+            image_url VARCHAR(255)
+        );
+    """)
+
+    # 6. Leagues Table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vision_player_leagues (
+            player_id VARCHAR(64) PRIMARY KEY REFERENCES vision_players(player_id) ON DELETE CASCADE,
+            league_name VARCHAR(100),
+            image_url VARCHAR(255)
+        );
+    """)
+
+    # 7. Traits Table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS vision_player_traits (
+            id SERIAL PRIMARY KEY,
+            player_id VARCHAR(64) REFERENCES vision_players(player_id) ON DELETE CASCADE,
+            trait_number INTEGER,
+            trait_name VARCHAR(100),
+            image_url VARCHAR(255),
+            UNIQUE(player_id, trait_number)
+        );
+    """)
+
     conn.commit()
     cur.close()
     conn.close()
@@ -210,6 +240,44 @@ def sync_data():
             """, (
                 pid, ps_name, ps.get("playstyle_level"), ps.get("playstyle_description"), ps_img_url
             ))
+
+        # 5. Upsert Nation
+        nation_name = p.get("nation_name")
+        if nation_name:
+            nation_img_url = f"{IMAGE_BASE_URL}/img_nation/ovr{ovr_val}_p{p_idx}.png"
+            cur.execute("""
+                INSERT INTO vision_player_nations (player_id, nation_name, image_url)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (player_id) DO UPDATE SET
+                nation_name = EXCLUDED.nation_name,
+                image_url = EXCLUDED.image_url;
+            """, (pid, nation_name, nation_img_url))
+
+        # 6. Upsert League
+        league_name = p.get("league_name")
+        if league_name:
+            league_img_url = f"{IMAGE_BASE_URL}/img_league/ovr{ovr_val}_p{p_idx}.png"
+            cur.execute("""
+                INSERT INTO vision_player_leagues (player_id, league_name, image_url)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (player_id) DO UPDATE SET
+                league_name = EXCLUDED.league_name,
+                image_url = EXCLUDED.image_url;
+            """, (pid, league_name, league_img_url))
+
+        # 7. Upsert Traits
+        for idx, trait in enumerate(p.get("traits", [])):
+            trait_num = trait.get("trait_number", idx + 1)
+            trait_img_url = f"{IMAGE_BASE_URL}/traits/ovr{ovr_val}_p{p_idx}_t{trait_num}.png"
+            
+            cur.execute("""
+                INSERT INTO vision_player_traits 
+                (player_id, trait_number, trait_name, image_url)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (player_id, trait_number) DO UPDATE SET
+                trait_name = EXCLUDED.trait_name,
+                image_url = EXCLUDED.image_url;
+            """, (pid, trait_num, trait.get("name"), trait_img_url))
 
     conn.commit()
     cur.close()
