@@ -160,9 +160,16 @@ def sync_data():
         pid = generate_player_id(p.get("card_name"), p.get("OVR"), p.get("event_name"))
         
         # Calculate image URLs based on local scraper saving format
-        ovr_val = p.get("OVR")
+        ovr_val = p.get("OVR") or p.get("ovr")
         p_idx = p.get("player_index")
-        portrait_url = f"{IMAGE_BASE_URL}/cards/ovr{ovr_val}_p{p_idx}.png"
+        
+        import re
+        raw_name = p.get("card_name", "unknown")
+        safe_name = re.sub(r'[^a-z0-9]+', '_', str(raw_name).lower()).strip('_')
+        if not safe_name: safe_name = "unknown"
+        base_fname = f"ovr{ovr_val}_{safe_name}_p{p_idx}"
+        
+        portrait_url = f"{IMAGE_BASE_URL}/cards/{base_fname}.png"
 
         # 1. Upsert Player
         cur.execute("""
@@ -199,7 +206,7 @@ def sync_data():
         # 3. Upsert Skills
         for idx, skill in enumerate(p.get("skills", [])):
             skill_num = skill.get("skill_number", idx + 1)
-            skill_img_url = f"{IMAGE_BASE_URL}/skills/ovr{ovr_val}_p{p_idx}_s{skill_num}.png"
+            skill_img_url = f"{IMAGE_BASE_URL}/skills/{base_fname}_s{skill_num}.png"
             
             cur.execute("""
                 INSERT INTO vision_player_skills 
@@ -227,7 +234,7 @@ def sync_data():
             ps_name = ps.get("playstyle_name")
             if not ps_name: continue
             
-            ps_img_url = f"{IMAGE_BASE_URL}/playstyles/ovr{ovr_val}_p{p_idx}_ps{idx+1}.png"
+            ps_img_url = f"{IMAGE_BASE_URL}/playstyles/{base_fname}_ps{idx+1}.png"
             
             cur.execute("""
                 INSERT INTO vision_player_playstyles
@@ -244,7 +251,7 @@ def sync_data():
         # 5. Upsert Nation
         nation_name = p.get("nation_name")
         if nation_name:
-            nation_img_url = f"{IMAGE_BASE_URL}/img_nation/ovr{ovr_val}_p{p_idx}.png"
+            nation_img_url = f"{IMAGE_BASE_URL}/img_nation/{base_fname}.png"
             cur.execute("""
                 INSERT INTO vision_player_nations (player_id, nation_name, image_url)
                 VALUES (%s, %s, %s)
@@ -256,7 +263,7 @@ def sync_data():
         # 6. Upsert League
         league_name = p.get("league_name")
         if league_name:
-            league_img_url = f"{IMAGE_BASE_URL}/img_league/ovr{ovr_val}_p{p_idx}.png"
+            league_img_url = f"{IMAGE_BASE_URL}/img_league/{base_fname}.png"
             cur.execute("""
                 INSERT INTO vision_player_leagues (player_id, league_name, image_url)
                 VALUES (%s, %s, %s)
@@ -268,7 +275,7 @@ def sync_data():
         # 7. Upsert Traits
         for idx, trait in enumerate(p.get("traits", [])):
             trait_num = trait.get("trait_number", idx + 1)
-            trait_img_url = f"{IMAGE_BASE_URL}/traits/ovr{ovr_val}_p{p_idx}_t{trait_num}.png"
+            trait_img_url = f"{IMAGE_BASE_URL}/traits/{base_fname}_t{trait_num}.png"
             
             cur.execute("""
                 INSERT INTO vision_player_traits 

@@ -89,10 +89,16 @@ class ScraperBot:
                 ovr, player_number, images, player_data = task
                 print(f"  [OCR Worker] Processing Player {player_number} (OVR {ovr})...")
                 
+                import re
+                raw_name = player_data.get("card_name", "unknown")
+                safe_name = re.sub(r'[^a-z0-9]+', '_', raw_name.lower()).strip('_')
+                if not safe_name: safe_name = "unknown"
+                base_fname = f"ovr{ovr}_{safe_name}_p{player_number}"
+                
                 # Step 8: Side Panel Shards & Card
                 if images.get("panel") is not None:
                     if "img_card" in self.bboxes:
-                        filepath = f"output/images/cards/ovr{ovr}_p{player_number}.png"
+                        filepath = f"output/images/cards/{base_fname}.png"
                         self.parser.crop_and_save(images["panel"], self.bboxes["img_card"], filepath)
                     if "shard_value" in self.bboxes:
                         player_data["shards"] = self.parser.extract_text(images["panel"], bbox=self.bboxes["shard_value"])
@@ -108,7 +114,7 @@ class ScraperBot:
                             player_data[key] = self.parser.count_stars(images["overview"], bbox=self.bboxes[key])
                     for key in ["img_nation", "img_league"]:
                         if key in self.bboxes:
-                            filepath = f"output/images/{key}/ovr{ovr}_p{player_number}.png"
+                            filepath = f"output/images/{key}/{base_fname}.png"
                             self.parser.crop_and_save(images["overview"], self.bboxes[key], filepath)
 
                 # Step 11-14: Skills
@@ -120,7 +126,7 @@ class ScraperBot:
                         if "skill_name" in self.bboxes:
                             parsed_skill["name"] = self.parser.extract_text(img_s, bbox=self.bboxes["skill_name"])
                         if "img_skill" in self.bboxes and "image_saved" not in parsed_skill:
-                            filepath = f"output/images/skills/ovr{ovr}_p{player_number}_s{parsed_skill['skill_number']}.png"
+                            filepath = f"output/images/skills/{base_fname}_s{parsed_skill['skill_number']}.png"
                             self.parser.crop_and_save(img_s, self.bboxes["img_skill"], filepath)
                             parsed_skill["image_saved"] = True
                         if "unlock_requirements" in self.bboxes:
@@ -210,7 +216,7 @@ class ScraperBot:
                             ps_data["playstyle_description"] = full_desc
                             
                             if "img_playstyle" in self.bboxes:
-                                filepath = f"output/images/playstyles/ovr{ovr}_p{player_number}_ps{j+1}.png"
+                                filepath = f"output/images/playstyles/{base_fname}_ps{j+1}.png"
                                 self.parser.crop_and_save(img_ps, self.bboxes["img_playstyle"], filepath)
                             player_data["playstyles"].append(ps_data)
 
@@ -230,7 +236,7 @@ class ScraperBot:
                             if len(trait_name) > 2:
                                 trait_data = {"name": trait_name, "trait_number": t}
                                 if img_key in self.bboxes:
-                                    filepath = f"output/images/traits/ovr{ovr}_p{player_number}_t{t}.png"
+                                    filepath = f"output/images/traits/{base_fname}_t{t}.png"
                                     self.parser.crop_and_save(img_traits, self.bboxes[img_key], filepath)
                                 player_data["traits"].append(trait_data)
 
